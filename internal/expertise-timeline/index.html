@@ -1,0 +1,2485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Internal working draft. Unlisted: not linked from the public Web Tests home or the experiment catalog. The repository is public, so this page is not access-controlled. Anyone with the link, or who guesses the path, can open it. Search engines are asked not to index it.">
+<title>Expertise timeline — internal working draft</title>
+<style>
+
+:root {
+  --bg: #f3efe6;
+  --paper: #fffdf8;
+  --ink: #1c1915;
+  --muted: #5c564c;
+  --line: #e4dacb;
+  --accent: #1d4e89;
+  --guess: #8a4b08;
+  --label-w: 132px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --serif: Georgia, "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 400px at 10% -10%, #fff8ea 0%, transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16.5px;
+  line-height: 1.5;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 72px; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; }
+h1 { font-size: 2.15rem; margin: 10px 0 4px; }
+h2 { font-size: 1.45rem; margin: 0 0 8px; }
+h3 { font-size: 1.05rem; margin: 0 0 6px; }
+.subtitle, .lede, .legend, .keys { color: var(--muted); }
+.subtitle { margin: 0 0 12px; font-size: 1.05rem; }
+.intro { max-width: 48rem; font-size: 1.05rem; }
+.banner {
+  background: #fff4d6;
+  border: 1px solid #e0c27a;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin: 0;
+}
+.skip {
+  position: absolute; left: 8px; top: -40px; background: white; padding: 8px 12px; z-index: 30;
+}
+.skip:focus { top: 8px; }
+section { margin-top: 28px; }
+.q, .narrative, .detail, .card-btn {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.q, .narrative { padding: 12px 14px; margin: 10px 0; }
+.ask { margin: 0 0 6px; font-weight: 700; color: var(--guess); }
+.dated { margin: 8px 0 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.82rem; color: #3f4f63; }
+.toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  position: sticky; top: 0; z-index: 20;
+  background: #f3efe6;
+  background: color-mix(in srgb, var(--bg) 90%, white);
+  padding: 10px 0;
+}
+button, .card-btn {
+  font: inherit; color: var(--ink); background: var(--paper);
+  border: 1px solid #d3c7b6; border-radius: 999px;
+  min-height: 44px; padding: 8px 14px; cursor: pointer;
+}
+button[aria-pressed="true"] { background: var(--accent); color: white; border-color: var(--accent); }
+button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+#filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.year-status { font-size: 0.92rem; }
+.narratives { display: grid; gap: 10px; }
+@media (min-width: 800px) { .narratives { grid-template-columns: 1fr 1fr; } }
+.stage { display: grid; gap: 16px; margin-top: 12px; }
+@media (min-width: 980px) {
+  .stage { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+  .detail { position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow: auto; }
+}
+.board-scroll {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--paper);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset;
+  -webkit-overflow-scrolling: touch;
+}
+.axis-row, .lane { display: grid; grid-template-columns: var(--label-w) max-content; }
+.sticky-label, .axis-spacer {
+  position: sticky; left: 0; z-index: 6; background: #fffdf8;
+  border-right: 1px solid var(--line); padding: 8px 10px;
+}
+.lane-name { font-weight: 750; font-size: 0.86rem; }
+.connection { min-height: 1.4em; margin: 0 0 8px; font-weight: 650; }
+.axis, .track { position: relative; }
+.track { overflow: hidden; }
+.axis { height: 36px; }
+.tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid #efe6d8; }
+.year-num { position: absolute; top: 8px; left: 4px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.now { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--accent); }
+.now span { position: absolute; top: 8px; right: 6px; font-size: 11px; color: var(--accent); white-space: nowrap; }
+.lane + .lane { border-top: 1px solid var(--line); }
+.bar {
+  position: absolute; height: 56px; min-height: 56px; border-radius: 8px;
+  padding: 4px 8px; text-align: left; overflow: hidden; line-height: 1.15;
+  border-width: 1.5px; border-style: solid; background: #e7f0f6; border-color: #1f4e6b;
+}
+.track[data-track="compute"] .bar { background: #e7f0f6; border-color: #1f4e6b; }
+.track[data-track="multidevice"] .bar { background: #e5f4f0; border-color: #1d5c52; }
+.track[data-track="authoring"] .bar { background: #f8f1e2; border-color: #7a5410; }
+.track[data-track="control"] .bar { background: #f8e9e4; border-color: #7a332c; }
+.bar.is-dashed { background: #fff7ea; border-style: dashed; border-color: var(--guess); }
+.bar.is-explore { background: #fff; border-style: dotted; border-color: var(--guess); }
+.bar.is-selected { box-shadow: inset 0 0 0 3px #1c1915; z-index: 2; }
+.bar.is-related { box-shadow: inset 0 0 0 3px var(--accent); z-index: 2; }
+.bar strong, .card-btn strong { display: block; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mark { display: inline-block; margin-top: 2px; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--guess); font-weight: 750; }
+.when { display: block; font-size: 0.68rem; color: #3f4f63; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail { padding: 14px; }
+.detail-title { font-family: var(--serif); font-size: 1.25rem; margin-bottom: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: #f6f1e7; }
+.chip.guess { border-style: dashed; color: var(--guess); }
+.undated-grid { display: grid; gap: 10px; }
+@media (min-width: 700px) { .undated-grid { grid-template-columns: 1fr 1fr; } }
+.card-btn {
+  border-radius: 14px; text-align: left; padding: 12px; display: block; width: 100%;
+}
+.card-btn span { display: block; color: var(--muted); font-size: 0.92rem; margin-top: 4px; }
+.card-btn .mark { color: var(--guess); }
+.card-btn.is-selected { box-shadow: inset 0 0 0 2px #1c1915; }
+.card-btn.is-related { box-shadow: inset 0 0 0 2px var(--accent); }
+a { color: var(--accent); }
+ul { padding-left: 1.2rem; }
+li { margin: 6px 0; }
+@media (max-width: 640px) {
+  :root { --label-w: 92px; }
+  h1 { font-size: 1.7rem; }
+  .wrap { padding: 14px 12px 56px; }
+  .lane-name { font-size: 0.75rem; }
+}
+
+</style>
+</head>
+<body>
+<a class="skip" href="#questions">Skip to questions</a>
+<a class="skip" href="#timeline">Skip to timeline</a>
+<div class="wrap">
+  <p class="banner" id="banner">Internal working draft. Unlisted: not linked from the public Web Tests home or the experiment catalog. The repository is public, so this page is not access-controlled. Anyone with the link, or who guesses the path, can open it. Search engines are asked not to index it.</p>
+  <header>
+    <h1 id="page-title">Expertise timeline</h1>
+    <p class="subtitle" id="subtitle">An internal story workbench. Not a resume.</p>
+    <p class="intro" id="intro">Four lanes of one story: compute from a chip inside a single device out to a cloud fleet; multidevice experience from a companion screen to several people in one spatial session; authoring tools that make those interfaces faster to build; and software that drives something outside the computer. This is not a resume and not a list of jobs. Solid bars are sourced. A bar marked Guess is a best guess. Dotted cards are exploration or interest and sit off the axis. Select a bar to read the evidence. If another lane lights up, that is the same story thread. It is not a claim that one thing caused the other.</p>
+  </header>
+  <section id="questions"></section>
+  <div class="toolbar" role="toolbar" aria-label="Timeline controls">
+    <button type="button" id="toggle-years" aria-pressed="false">Year numbers</button>
+    <span class="year-status" id="year-status">Year numbers are hidden.</span>
+    <button type="button" id="fit">Fit</button>
+    <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+    <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+    <div id="filters"></div>
+  </div>
+  <p class="legend" id="legend">Guess means the date or the lane is still a best guess. Exploration and Interest only stay off the axis. A second outline is the same story thread, not a cause.</p>
+  <p class="keys" id="keys">Keys: Y year numbers, F fit, plus and minus zoom, 1 to 4 lanes, arrows move, Esc clears.</p>
+  <div class="narratives" id="narratives"></div>
+  <div class="stage">
+    <div>
+      <section id="timeline" aria-label="Timeline">
+        <h2 id="timeline-heading">Four lanes</h2>
+        <p id="connection" class="connection"></p>
+        <div class="board-scroll" id="board-scroll">
+          <div class="axis-row">
+            <div class="axis-spacer" aria-hidden="true"></div>
+            <div class="axis" id="axis"></div>
+          </div>
+          <div id="lanes"></div>
+        </div>
+      </section>
+      <section id="undated"></section>
+    </div>
+    <aside class="detail" id="detail" aria-live="polite">
+      <h2>Evidence</h2>
+      <p>Select a bar or an off-axis card. Evidence, guesses, and any shared story thread show up here.</p>
+    </aside>
+  </div>
+  <section id="backlog"></section>
+  <section id="sources"></section>
+  <section id="revisions"></section>
+  <section id="anchors"></section>
+</div>
+<script type="application/json" id="story-data">
+{
+  "banner": "Internal working draft. Unlisted: not linked from the public Web Tests home or the experiment catalog. The repository is public, so this page is not access-controlled. Anyone with the link, or who guesses the path, can open it. Search engines are asked not to index it.",
+  "title": "Expertise timeline",
+  "subtitle": "An internal story workbench. Not a resume.",
+  "intro": "Four lanes of one story: compute from a chip inside a single device out to a cloud fleet; multidevice experience from a companion screen to several people in one spatial session; authoring tools that make those interfaces faster to build; and software that drives something outside the computer. This is not a resume and not a list of jobs. Solid bars are sourced. A bar marked Guess is a best guess. Dotted cards are exploration or interest and sit off the axis. Select a bar to read the evidence. If another lane lights up, that is the same story thread. It is not a claim that one thing caused the other.",
+  "legend": "Guess means the date or the lane is still a best guess. Exploration and Interest only stay off the axis. A second outline is the same story thread, not a cause.",
+  "keys": "Keys: Y year numbers, F fit, plus and minus zoom, 1 to 4 lanes, arrows move, Esc clears.",
+  "questionsHeading": "Open questions",
+  "questionsLede": "These sit above the timeline so a guess can be checked before it hardens. Answer them in any order. The first ones decide whether a dashed bar should become solid, move, or leave.",
+  "timelineHeading": "Four lanes",
+  "undatedHeading": "Off the axis",
+  "undatedLede": "No honest month or year belongs on these yet. They are not dropped into a gap to make the picture look complete.",
+  "backlogHeading": "Validation backlog",
+  "sourcesHeading": "Sources",
+  "revisionHeading": "Revision log",
+  "anchorHeading": "Portfolio month checks",
+  "anchorLede": "Copied from the portfolio experience file to check bars. Not the story, and not a job list.",
+  "emptyDetail": "Select a bar or an off-axis card. Evidence, guesses, and any shared story thread show up here.",
+  "yearHidden": "Year numbers are hidden.",
+  "yearShown": "Year numbers are shown.",
+  "axis": {
+    "start": "1986-01",
+    "end": "2026-12",
+    "ticks": [
+      "1986",
+      "1990",
+      "1994",
+      "1998",
+      "2002",
+      "2006",
+      "2010",
+      "2014",
+      "2018",
+      "2022",
+      "2026"
+    ],
+    "now": "2026-11"
+  },
+  "tracks": [
+    {
+      "id": "compute",
+      "name": "Heterogeneous compute",
+      "short": "Compute",
+      "blurb": "The lane runs from a specialized chip inside one device — imaging silicon, a milliwatt analog front end, a car stereo, a game console — toward services that coordinate many computers. Cloud and storage work is here because it is compute at a distance, not because those jobs were interface work. The upper end is an account that still needs a line between personal ownership and an employer fleet."
+    },
+    {
+      "id": "multidevice",
+      "name": "Multidevice UX",
+      "short": "Multidevice",
+      "blurb": "The lane runs from a companion screen beside a primary device toward several people in one spatial session. When the authoring lane lights up with it, the same product carried both a toolkit and a multi-device experience."
+    },
+    {
+      "id": "authoring",
+      "name": "Multimodal authoring",
+      "short": "Authoring",
+      "blurb": "Frameworks, tools, and shorter paths to an interactive experience: skinnable automotive UI, an e-paper application API, pen and touch devices, layout designers, gesture frameworks, and spatial SDKs. Agentic authoring is named on this lane and is not yet a sourced product."
+    },
+    {
+      "id": "control",
+      "name": "External-device control",
+      "short": "Control",
+      "blurb": "Software that moves or senses something outside the computer. The sourced example is a myoelectric limb. Radio here is a license, not a project. Robotics stays exploration until someone says it shipped."
+    }
+  ],
+  "employers": [
+    {
+      "id": "zenith",
+      "name": "Zenith Image Systems",
+      "start": "1986-08",
+      "end": "1990-01",
+      "current": false
+    },
+    {
+      "id": "hughes",
+      "name": "Hughes",
+      "start": "1990-04",
+      "end": "1991-03",
+      "current": false
+    },
+    {
+      "id": "new-resolutions",
+      "name": "New Resolutions",
+      "start": "1991-03",
+      "end": "1993-04",
+      "current": false
+    },
+    {
+      "id": "online-resources",
+      "name": "Online Resources",
+      "start": "1992-04",
+      "end": "1993-04",
+      "current": false
+    },
+    {
+      "id": "ace",
+      "name": "AC&E Ltd.",
+      "start": "1993-04",
+      "end": "1995-05",
+      "current": false
+    },
+    {
+      "id": "lcc",
+      "name": "LCC International",
+      "start": "1995-05",
+      "end": "1996-09",
+      "current": false
+    },
+    {
+      "id": "ifusion",
+      "name": "Ifusion",
+      "start": "1996-09",
+      "end": "1997-03",
+      "current": false
+    },
+    {
+      "id": "spc",
+      "name": "Software Productivity Consortium",
+      "start": "1997-01",
+      "end": "1997-06",
+      "current": false
+    },
+    {
+      "id": "nada",
+      "name": "National Automobile Dealers Assoc (NADA)",
+      "start": "1997-03",
+      "end": "1997-12",
+      "current": false
+    },
+    {
+      "id": "ms1",
+      "name": "Microsoft (first span in the portfolio)",
+      "start": "1998-04",
+      "end": "2007-03",
+      "current": false
+    },
+    {
+      "id": "amazon",
+      "name": "Amazon.com",
+      "start": "2007-03",
+      "end": "2008-04",
+      "current": false
+    },
+    {
+      "id": "ms2",
+      "name": "Microsoft (second span in the portfolio)",
+      "start": "2008-04",
+      "end": "2015-03",
+      "current": false
+    },
+    {
+      "id": "daqri",
+      "name": "DAQRI",
+      "start": "2015-03",
+      "end": "2016-06",
+      "current": false
+    },
+    {
+      "id": "margrave",
+      "name": "Margrave Technologies",
+      "start": "2016-06",
+      "end": "2017-11",
+      "current": false
+    },
+    {
+      "id": "magic-leap",
+      "name": "Magic Leap",
+      "start": "2017-11",
+      "end": "2020-11",
+      "current": false
+    },
+    {
+      "id": "niantic",
+      "name": "Niantic",
+      "start": "2020-11",
+      "end": "2022-08",
+      "current": false
+    },
+    {
+      "id": "quintar",
+      "name": "Quintar",
+      "start": "2022-09",
+      "end": null,
+      "current": true
+    }
+  ],
+  "milestones": [
+    {
+      "id": "zenith-imaging",
+      "thread": "zenith",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "1986-08",
+      "end": "1990-01",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "zenith",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Zenith Image Systems",
+      "short": "On-chip imaging",
+      "title": "Hardware-accelerated imaging",
+      "summary": "Imaging tools on TI processors, inside one machine. The portfolio names NASA, defense, and the FBI as the stakes for that picture work.",
+      "detail": [
+        "The compute lane starts here: specialized silicon beside the general-purpose processor, not a room of servers."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "prosthetic",
+      "thread": "prosthetic",
+      "tracks": [
+        "compute",
+        "control"
+      ],
+      "trackStatus": {
+        "compute": "documented",
+        "control": "documented"
+      },
+      "placement": "axis",
+      "start": "1991-03",
+      "end": "1993-04",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "new-resolutions",
+      "evidence": [
+        "confirmed-by-richard",
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "New Resolutions",
+      "short": "Limb electronics",
+      "title": "Myoelectric limb electronics",
+      "summary": "An analog neural interface under 10 mW, instrumentation amplifiers for myoelectric signals, and a charge-pump converter so the limb could run from one battery.",
+      "detail": [
+        "Richard described this work this turn. The portfolio records the project as Prosthetic Electronic Technologies.",
+        "On the compute lane it is a tiny analog front end in one device. On the control lane it is electronics that drive a limb. The two bars are the same project."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Portfolio device card",
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "hughes-videodisc",
+      "thread": "hughes-videodisc",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1990-04",
+      "end": "1991-03",
+      "current": false,
+      "dateStatus": "tentative",
+      "dateSource": "employer",
+      "employerId": "hughes",
+      "evidence": [
+        "confirmed-by-richard",
+        "portfolio-documented",
+        "tentative-date"
+      ],
+      "kind": "",
+      "org": "Hughes",
+      "short": "Videodisc sims",
+      "title": "Archival videodisc simulations",
+      "summary": "Firefighter and airbase training pictures played from archival videodisc, with graphics laid on top.",
+      "detail": [
+        "The portfolio puts CAV laser-disc imagery, overlay graphics, dynamic fire, and bombing-pattern extrapolation in one sentence. Richard this turn says the videodisc work and the later 3D work are different systems and must not be folded together.",
+        "The bar uses only the portfolio employer window. The months of this system inside that window are not known. A conflicting earlier start is in the questions and is not drawn as its own bar."
+      ],
+      "caveats": [
+        "Best guess that this is the earlier of the two Hughes systems."
+      ],
+      "sources": [
+        "Portfolio experience file",
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "hughes-3d",
+      "thread": "hughes-3d",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1990-04",
+      "end": "1991-03",
+      "current": false,
+      "dateStatus": "tentative",
+      "dateSource": "employer",
+      "employerId": "hughes",
+      "evidence": [
+        "confirmed-by-richard",
+        "portfolio-documented",
+        "tentative-date"
+      ],
+      "kind": "",
+      "org": "Hughes",
+      "short": "3D fire map",
+      "title": "Spatial map over 3D fires",
+      "summary": "A touchscreen map laid over a three-dimensional fire scene for firefighter training.",
+      "detail": [
+        "The unlisted interaction timeline calls this a spatial-map touchscreen over 3D fire simulations. Richard this turn says the 3D work came after the archival videodisc work, and names USAF and Navy firefighter training.",
+        "This draft does not know which portfolio phrase — fires or airbase bombing — belongs to which system. Same employer window as the videodisc bar, and dashed, because the project months are not known."
+      ],
+      "caveats": [
+        "Best guess that this is the later Hughes system. USAF and Navy are Richard's memory this turn, not a line in the portfolio sentence."
+      ],
+      "sources": [
+        "Unlisted interaction timeline",
+        "Richard, this turn",
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "nus-overlays",
+      "thread": "nus",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1991-03",
+      "end": "1993-04",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "new-resolutions",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "New Resolutions",
+      "short": "Training overlays",
+      "title": "Industrial training overlays",
+      "summary": "Laser-disc scenes of industrial systems with interactive graphics on top, for NUS Training.",
+      "detail": [
+        "A portfolio project during New Resolutions. Separate from the limb electronics and separate from Hughes."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "screen-phone",
+      "thread": "screen-phone",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1992-04",
+      "end": "1993-04",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "online-resources",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Online Resources",
+      "short": "Screen phone",
+      "title": "Banking screen phone",
+      "summary": "A home telephone with an embedded screen, a modem, and scheduled payments, before the consumer web.",
+      "detail": [
+        "Portfolio work at Online Resources. The overlap with New Resolutions is in the questions.",
+        "A company patent for a remote terminal is intentionally not linked here. The portfolio device card says Richard is not the inventor on it."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Portfolio device card"
+      ]
+    },
+    {
+      "id": "ace-ui",
+      "thread": "ace",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1993-04",
+      "end": "1995-05",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "ace",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "AC&E Ltd.",
+      "short": "Schedule and network UI",
+      "title": "Scheduling and network-control UI",
+      "summary": "Timeline and scheduling for video conferences, and operations screens for telecom network gear.",
+      "detail": [
+        "Matches the unlisted timeline's line about timeline, scheduling, and network controls. The portfolio adds video-conference scheduling and DCME, SONET, and ATM operations software: rack models, configuration, and status.",
+        "The dashed twin on the control lane asks whether this software also commanded external gear."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Unlisted interaction timeline"
+      ]
+    },
+    {
+      "id": "ace-gear",
+      "thread": "ace",
+      "tracks": [
+        "control"
+      ],
+      "trackStatus": {
+        "control": "tentative"
+      },
+      "placement": "axis",
+      "start": "1993-04",
+      "end": "1995-05",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "ace",
+      "evidence": [
+        "portfolio-documented",
+        "tentative-track"
+      ],
+      "kind": "",
+      "org": "AC&E Ltd.",
+      "short": "Gear control?",
+      "title": "Network gear — control, or only screens?",
+      "summary": "A dashed reading of the same AC&E software: did it command external telecom equipment, or only show and schedule it?",
+      "detail": [
+        "Same story thread as the authoring bar. The Guess mark means the lane is a guess, not the employer months."
+      ],
+      "caveats": [
+        "Lane association is a best guess."
+      ],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "lcc-pen",
+      "thread": "lcc",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1995-05",
+      "end": "1996-09",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "lcc",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "LCC International",
+      "short": "Pen tablet",
+      "title": "Pen tablet for network surveys",
+      "summary": "A pen-enabled tablet for collecting and reviewing cellular network measurements, with GPS-indexed storage.",
+      "detail": [
+        "This is the portfolio's pen UI. It does not say the users were field workers. The unlisted timeline had attached a field-worker pen UI to NADA instead. See the questions."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "ifusion",
+      "thread": "ifusion",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1996-09",
+      "end": "1997-03",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "ifusion",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Ifusion",
+      "short": "Feed authoring",
+      "title": "Authoring from live feeds",
+      "summary": "Tools that turned crawled and extracted web content into a push-media service.",
+      "detail": [
+        "The unlisted timeline's line about dynamic UI authoring from content feeds. The portfolio describes authoring tools plus crawling, extraction, indexing, and reformatting."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Unlisted interaction timeline"
+      ]
+    },
+    {
+      "id": "spc-queues",
+      "thread": "spc",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "1997-01",
+      "end": "1997-06",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "spc",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Software Productivity Consortium",
+      "short": "Machine queues",
+      "title": "Work queues across machines",
+      "summary": "A web-scanning spider whose URLs were handed out through networked queues to more than one machine.",
+      "detail": [
+        "Portfolio wording says the queue could scale across virtually unlimited machines. That phrase is not a measured fleet, and it is not the later cloud-scale claim."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "nada-books",
+      "thread": "nada",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1997-03",
+      "end": "1997-12",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "nada",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "NADA",
+      "short": "Dealer screens",
+      "title": "Dealer valuation screens",
+      "summary": "A three-tier car-valuation application for subscription dealers: a protected valuation core and dealer-facing screens.",
+      "detail": [
+        "The portfolio does not describe this as a pen or field-worker UI. It is drawn on its own so it is not silently merged with the LCC tablet."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "autopc-ui",
+      "thread": "autopc",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "1998-12",
+      "end": "2002-01",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms1",
+      "evidence": [
+        "confirmed-by-richard",
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Skinnable car UI",
+      "title": "Skinnable automotive UI",
+      "summary": "A developer framework for in-car controls whose look could change at runtime, including speech alongside the screen.",
+      "detail": [
+        "Portfolio project record for the Clarion AutoPC work: C++, rich controls, themes, and design tools. The months come from that project record. The portfolio employer span around it is longer, and a project record is not itself an employment contract.",
+        "Richard this turn describes US 6,677,962 as the split between runtime control and style, so designers could stay on behavior and artists on richness. Google Patents lists one inventor, Richard St. Clair Bailey, assigned to Microsoft. Filing and grant sit in the year view only. They are not employment dates."
+      ],
+      "caveats": [
+        "Freescale, as the low-power target, is Richard's account this turn. The patent text checked for this draft does not name Freescale."
+      ],
+      "sources": [
+        "Portfolio project list",
+        "Google Patents listing for US 6,677,962",
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "autopc-silicon",
+      "thread": "autopc",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "1998-12",
+      "end": "2002-01",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms1",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Car UI silicon",
+      "title": "Automotive UI on a small chip",
+      "summary": "The same AutoPC framework, read as compute: C++ on ARM, built for a car stereo rather than a desktop.",
+      "detail": [
+        "Same story thread as the skinnable UI bar. The portfolio states ARM. It does not, by itself, prove the Freescale account."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "forza",
+      "thread": "forza",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "2002-01",
+      "end": "2005-05",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms1",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Console realtime",
+      "title": "Console audio, physics, and streaming",
+      "summary": "Real-time sound and physics driven from the game world, plus geometry streaming from disc to the screen, on the original Forza work.",
+      "detail": [
+        "Portfolio project record for Turn 10 and Forza Motorsport. It is on the compute lane because the machine had to keep up with the world model. Spatial-audio patents in the portfolio sit beside this work. This draft does not retell the acoustic method."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "xaml",
+      "thread": "xaml",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2005-05",
+      "end": "2007-01",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms1",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Layout tools",
+      "title": "Visual layout tools",
+      "summary": "Designer interactions for XAML layout, and a way for others to add their own editors.",
+      "detail": [
+        "Portfolio project record inside the first Microsoft span. Those project months are finer than the employer row. A sourced employer span does not by itself prove a project month; this one is taken from the project list."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "sitb-pages",
+      "thread": "sitb",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "2007-02",
+      "end": "2008-04",
+      "current": false,
+      "dateStatus": "tentative",
+      "dateSource": "project",
+      "employerId": "amazon",
+      "evidence": [
+        "portfolio-documented",
+        "tentative-date"
+      ],
+      "kind": "",
+      "org": "Amazon.com",
+      "short": "Page images",
+      "title": "Book-page image service",
+      "summary": "Server technology for a very large set of book-page images, including a move onto Amazon S3. This is Look Inside, also called SITB. It is not the Kindle application API.",
+      "detail": [
+        "Richard built this server technology. It does not share a story thread with the Kindle e-paper API.",
+        "The portfolio summary and the achievement line disagree. One says petabyte-scale and 3x faster. The other says 80 TB, 500 million images, and a 30 percent cut in delivery time. This draft repeats both and picks neither.",
+        "The bar is dashed because the project file starts a month before the Amazon employer row. The months are in the year view."
+      ],
+      "caveats": [
+        "Start month conflicts with the employer row. Speed and scale phrases in the portfolio disagree."
+      ],
+      "sources": [
+        "Portfolio project list",
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "kindle-api",
+      "thread": "kindle-api",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2007-03",
+      "end": "2008-04",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "amazon",
+      "evidence": [
+        "confirmed-by-richard",
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Amazon.com",
+      "short": "Kindle e-paper API",
+      "title": "Kindle e-paper application API",
+      "summary": "Application UI APIs so launch experiences could interact with the e-paper screen.",
+      "detail": [
+        "Richard named this API this turn. The portfolio has a separate project from the book-page image service. This draft does not describe Look Inside as the Kindle API, and it does not describe the API as the image service.",
+        "The project months match the Amazon employer row. What the API covered — which applications, which reader, what an outside developer could do — is still an open question."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list",
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "auto-platform",
+      "thread": "auto-platform",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2008-04",
+      "end": "2011-08",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms2",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Later car HMI",
+      "title": "Automotive HMI platform",
+      "summary": "A later in-car UI framework: XAML with a native C++ path and hardware-accelerated 2D and 3D, for ARM stereos.",
+      "detail": [
+        "Portfolio project for the second Microsoft automotive stretch. The portfolio names several carmakers. This is not the earlier AutoPC bar. It has its own thread because the portfolio treats it as a later platform."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "azure-storage",
+      "thread": "azure",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "2008-04",
+      "end": "2010-09",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms2",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Fleet storage",
+      "title": "Storage service at fleet scale",
+      "summary": "Work on a distributed storage service, including its consensus implementation, inside Microsoft's cloud.",
+      "detail": [
+        "The portfolio says this investigation covered a global storage service of 500,000 compute nodes. Read that as the employer's fleet in the portfolio's words. Do not read it as Richard's personal deployment.",
+        "His scale sentence this turn — chips in one device through hundreds of thousands of cloud computers — is the reach of this lane, and it still needs that ownership line.",
+        "The project months overlap the later automotive platform in the project list. How the assignments sat in time is an open question. Implementation notes from the portfolio are left out of this story."
+      ],
+      "caveats": [
+        "Fleet size is the employer's, as worded in the portfolio, and is not a personal deployment claim."
+      ],
+      "sources": [
+        "Portfolio project list",
+        "Richard, this turn, for the lane's scale phrase"
+      ]
+    },
+    {
+      "id": "phone-frameworks",
+      "thread": "phone",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2010",
+      "end": "2011",
+      "current": false,
+      "dateStatus": "tentative",
+      "dateSource": "prior-timeline",
+      "employerId": "ms2",
+      "evidence": [
+        "portfolio-documented",
+        "tentative-date"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Phone frameworks",
+      "title": "Phone UX frameworks",
+      "summary": "Developer frameworks for phone applications, including layout tools. The role is in the portfolio. The dates on this bar are not.",
+      "detail": [
+        "The experience file has no start or end on the phone role. The dashed year window comes from the unlisted interaction timeline. A technical-editing credit for a phone book sits in the project list and is not this bar."
+      ],
+      "caveats": [
+        "Year window is a best guess from the older timeline."
+      ],
+      "sources": [
+        "Portfolio experience file",
+        "Unlisted interaction timeline"
+      ]
+    },
+    {
+      "id": "kinect",
+      "thread": "kinect",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2011-05",
+      "end": "2015-03",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "ms2",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Microsoft",
+      "short": "Body tracking",
+      "title": "Body-tracked spatial UI",
+      "summary": "A developer framework that turned body tracking into on-screen interaction, shipped with Windows and Xbox.",
+      "detail": [
+        "Portfolio project and device card. Gesture and natural input sit on the authoring lane. A portfolio patent about ergonomic cursor mapping is from the same stretch of time, and the portfolio says that patent does not name Kinect, so it is not attached here."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list",
+        "Portfolio device card"
+      ]
+    },
+    {
+      "id": "daqri",
+      "thread": "daqri",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2015-03",
+      "end": "2016-06",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "daqri",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "DAQRI",
+      "short": "Helmet toolkit",
+      "title": "Helmet spatial UI toolkit",
+      "summary": "An industrial helmet with depth and thermal sensing, and a Unity framework for panels placed on the head, the body, or the world.",
+      "detail": [
+        "Portfolio device and project. The helmet was shown in a public CES keynote. A fleet dashboard in the portfolio is about managing devices, not the cloud-scale claim. Sensor and firmware notes in the experience file are left out of this story."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Portfolio device card"
+      ]
+    },
+    {
+      "id": "margrave",
+      "thread": "margrave",
+      "tracks": [
+        "authoring",
+        "multidevice"
+      ],
+      "trackStatus": {
+        "authoring": "documented",
+        "multidevice": "documented"
+      },
+      "placement": "axis",
+      "start": "2016-06",
+      "end": "2017-11",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "margrave",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Margrave Technologies",
+      "short": "VR social UI",
+      "title": "Extensible VR social UI",
+      "summary": "A cross-headset toolkit so a VR experience could share out to social platforms, plus authoring tools for immersive pieces.",
+      "detail": [
+        "The unlisted timeline's Margrave line. The portfolio describes a Unity social-sharing SDK across headset models, plus a public Times Square billboard piece and a mobile VR language-training piece. Those two customer pieces stay as context until Richard wants them split into their own threads."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Unlisted interaction timeline"
+      ]
+    },
+    {
+      "id": "magic-leap-devices",
+      "thread": "magic-leap",
+      "tracks": [
+        "multidevice"
+      ],
+      "trackStatus": {
+        "multidevice": "documented"
+      },
+      "placement": "axis",
+      "start": "2017-11",
+      "end": "2020-11",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "magic-leap",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Magic Leap",
+      "short": "Sessions",
+      "title": "Shared spatial sessions and companions",
+      "summary": "Several headsets in one spatial session, with companion apps on computers and phones streaming into the glasses.",
+      "detail": [
+        "The portfolio describes synchronized multidevice sharing, a mobile companion, and real-time graphics from mobile and desktop companions. Same thread as the framework bar on the authoring lane."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Portfolio device card"
+      ]
+    },
+    {
+      "id": "magic-leap-tools",
+      "thread": "magic-leap",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2017-11",
+      "end": "2020-11",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "magic-leap",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Magic Leap",
+      "short": "Frameworks",
+      "title": "Spatial collaboration frameworks",
+      "summary": "C++ frameworks and sharing APIs other people used to build multi-headset applications.",
+      "detail": [
+        "Same Magic Leap story as the companion bar. Lighting them together shows the connection. It does not say the framework caused the companion, or the reverse."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "niantic-shared",
+      "thread": "niantic",
+      "tracks": [
+        "multidevice"
+      ],
+      "trackStatus": {
+        "multidevice": "documented"
+      },
+      "placement": "axis",
+      "start": "2020-11",
+      "end": "2022-08",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "niantic",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Niantic",
+      "short": "Shared AR",
+      "title": "Shared AR for many players",
+      "summary": "The shared-AR piece of a developer kit, so more than one person can occupy the same spatial session.",
+      "detail": [
+        "Portfolio account of Lightship. The multiuser piece is this bar. The authoring piece is the twin."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file",
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "niantic-sdk",
+      "thread": "niantic",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2020-11",
+      "end": "2022-08",
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "employer",
+      "employerId": "niantic",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Niantic",
+      "short": "Lightship kit",
+      "title": "Lightship developer kit",
+      "summary": "The authoring side of that kit: meshing, depth, semantics, visual positioning, and samples other people could build on.",
+      "detail": [
+        "Portfolio account of a public SDK launch. Planetary-scale persistence is the product's claim in the portfolio, not a claim about a fleet Richard deployed personally."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "quintar-renderer",
+      "thread": "quintar-sports",
+      "tracks": [
+        "compute"
+      ],
+      "trackStatus": {
+        "compute": "documented"
+      },
+      "placement": "axis",
+      "start": "2022-09",
+      "end": null,
+      "current": true,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "quintar",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Quintar",
+      "short": "Sports",
+      "title": "Live sports renderer",
+      "summary": "A streaming 3D renderer that keeps uneven network data off the frame that has to finish, used for live sport overlays.",
+      "detail": [
+        "Portfolio description of a time-series presenter and the stereo path for sport augmentations. The portfolio names 100 frames a second. The bar is open-ended because the portfolio marks the work current. Same thread as shared viewing. Not the same thread as the fan agent."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "quintar-share",
+      "thread": "quintar-sports",
+      "tracks": [
+        "multidevice"
+      ],
+      "trackStatus": {
+        "multidevice": "documented"
+      },
+      "placement": "axis",
+      "start": "2022-09",
+      "end": null,
+      "current": true,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "quintar",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Quintar",
+      "short": "Viewing",
+      "title": "Simultaneous multiuser sports viewing",
+      "summary": "Low-latency shared viewing of a live spatial sports experience, with more than one person in the session.",
+      "detail": [
+        "The portfolio names SharePlay and clients on phones, a headset, and visionOS. Same story as the renderer. The fan agent is a different thread."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio project list"
+      ]
+    },
+    {
+      "id": "quintar-agent",
+      "thread": "quintar-agent",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "axis",
+      "start": "2022-09",
+      "end": null,
+      "current": true,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "project",
+      "employerId": "quintar",
+      "evidence": [
+        "portfolio-documented"
+      ],
+      "kind": "",
+      "org": "Quintar",
+      "short": "Fan agent",
+      "title": "Agentic fan questions",
+      "summary": "A fan can ask about the event, the venue, or the sport. Speech on the device handles some requests locally and routes others onward.",
+      "detail": [
+        "The portfolio describes connectors feeding sports and venue data to the models that answer. This is not the agentic authoring pipeline card. That card stays off the axis until Richard says they are the same work."
+      ],
+      "caveats": [],
+      "sources": [
+        "Portfolio experience file"
+      ]
+    },
+    {
+      "id": "agentic-authoring",
+      "thread": "agentic-authoring",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "documented"
+      },
+      "placement": "undated",
+      "start": null,
+      "end": null,
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "none",
+      "employerId": "",
+      "evidence": [
+        "exploration",
+        "confirmed-by-richard"
+      ],
+      "kind": "",
+      "org": "",
+      "short": "Agentic authoring",
+      "title": "Agentic authoring pipelines",
+      "summary": "A hoped-for pipeline that would turn intent into interactive experiences quickly. No sourced project yet.",
+      "detail": [
+        "Named by Richard this turn as part of this lane. Not placed on the axis. Not merged with the fan-agent bar."
+      ],
+      "caveats": [
+        "Exploration. Not a shipped product in the sources used here."
+      ],
+      "sources": [
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "tracked-props",
+      "thread": "props",
+      "tracks": [
+        "authoring"
+      ],
+      "trackStatus": {
+        "authoring": "tentative"
+      },
+      "placement": "undated",
+      "start": null,
+      "end": null,
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "none",
+      "employerId": "",
+      "evidence": [
+        "tentative-track",
+        "exploration"
+      ],
+      "kind": "",
+      "org": "",
+      "short": "Tracked props",
+      "title": "Tracking-enabled prop devices",
+      "summary": "Physical props whose tracking would drive an interface. No project is named in the sources used here.",
+      "detail": [
+        "The request put props with authoring tools. They might instead belong on multidevice or control. The lane is a guess, and there is no date."
+      ],
+      "caveats": [
+        "Lane and project are both unconfirmed."
+      ],
+      "sources": [
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "device-pairing",
+      "thread": "pairing",
+      "tracks": [
+        "multidevice"
+      ],
+      "trackStatus": {
+        "multidevice": "tentative"
+      },
+      "placement": "undated",
+      "start": null,
+      "end": null,
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "none",
+      "employerId": "",
+      "evidence": [
+        "portfolio-documented",
+        "tentative-track"
+      ],
+      "kind": "",
+      "org": "",
+      "short": "Device pairing",
+      "title": "Portable device pairing",
+      "summary": "A portfolio patent about pairing a portable device with a tracking system. The product and the work months are not assigned.",
+      "detail": [
+        "US 9,162,144 is the portfolio's pairing patent. This card does not assign it to Kinect, Magic Leap, a prop, or a month. Grant years stay in the year view only."
+      ],
+      "caveats": [
+        "Product association is a best guess that this draft refuses to make."
+      ],
+      "sources": [
+        "Portfolio patent list"
+      ]
+    },
+    {
+      "id": "radio-interest",
+      "thread": "radio",
+      "tracks": [
+        "control"
+      ],
+      "trackStatus": {
+        "control": "documented"
+      },
+      "placement": "undated",
+      "start": null,
+      "end": null,
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "none",
+      "employerId": "",
+      "evidence": [
+        "confirmed-by-richard"
+      ],
+      "kind": "interest",
+      "org": "",
+      "short": "Radio interest",
+      "title": "Amateur radio interest",
+      "summary": "Call sign WA3ZTI. The license confirms interest. It is not a project and it has no date in this draft.",
+      "detail": [
+        "Software-controlled radio and data acquisition are an open question. Nothing is penciled onto the axis."
+      ],
+      "caveats": [
+        "Interest only. Not evidence of a shipped radio project."
+      ],
+      "sources": [
+        "Richard, this turn"
+      ]
+    },
+    {
+      "id": "robots",
+      "thread": "robots",
+      "tracks": [
+        "control"
+      ],
+      "trackStatus": {
+        "control": "documented"
+      },
+      "placement": "undated",
+      "start": null,
+      "end": null,
+      "current": false,
+      "dateStatus": "portfolio-documented",
+      "dateSource": "none",
+      "employerId": "",
+      "evidence": [
+        "exploration"
+      ],
+      "kind": "",
+      "org": "",
+      "short": "Robot exploration",
+      "title": "Autonomous robot control",
+      "summary": "Marked as exploration. This draft does not call it a shipped product.",
+      "detail": [
+        "The request says this may be current exploration rather than something that shipped. There is no name and no date. WebAR Tests experiments are not treated as this project."
+      ],
+      "caveats": [
+        "Maturity is unconfirmed."
+      ],
+      "sources": [
+        "Richard, this turn"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-hughes",
+      "priority": 1,
+      "ask": "Hughes chronology",
+      "refs": [
+        "hughes-videodisc",
+        "hughes-3d"
+      ],
+      "prompt": "Hughes window: the portfolio employer row and Richard's memory this turn do not start together. Which start should the story use? The archival videodisc simulations and the later spatial-map touchscreen over 3D fires are two dashed bars on the same employer window, because the project months are not known. Is videodisc earlier and 3D later, were they different systems, and were they the USAF and Navy firefighter trainers?",
+      "datedNote": "Portfolio employer row: April 1990 – March 1991. Memory this turn: April 1989 – March 1991. Zenith in the portfolio runs through January 1990, so an April 1989 Hughes start would overlap Zenith. Neither Hughes bar is drawn from the 1989 memory."
+    },
+    {
+      "id": "q-scale",
+      "priority": 2,
+      "ask": "Role and scale",
+      "refs": [
+        "azure-storage",
+        "sitb-pages",
+        "spc-queues",
+        "zenith-imaging"
+      ],
+      "prompt": "The upper end of the compute lane is unresolved. The portfolio describes investigation inside a storage service it sizes as a very large employer fleet, and a book-page image service it describes with a large image count and a storage migration. Which of those numbers are systems Richard personally designed or operated, and which are an employer fleet he worked inside? His phrase this turn — from chips in one device through hundreds of thousands of cloud computers — needs that line before it is told as a personal deployment. A separate portfolio phrase about virtually unlimited crawl machines is not that fleet.",
+      "datedNote": "Portfolio Azure storage project record: April 2008 – September 2010, inside the Microsoft employer span April 2008 – March 2015. Portfolio wording: 500,000 compute nodes. Book-page service project record: February 2007 – April 2008, while the Amazon employer row starts March 2007. Portfolio wording on that service disagrees with itself: 500 million images and 80 TB, petabyte-scale, 3x faster, and a 30 percent cut."
+    },
+    {
+      "id": "q-radio",
+      "priority": 3,
+      "ask": "Radio and data acquisition",
+      "refs": [
+        "radio-interest"
+      ],
+      "prompt": "The amateur license WA3ZTI confirms interest, not a project and not a date. Were there software-controlled radio or data-acquisition systems that belong on the control lane? If yes, what shipped, what was exploration, and when?",
+      "datedNote": ""
+    },
+    {
+      "id": "q-props",
+      "priority": 4,
+      "ask": "Tracking-enabled props",
+      "refs": [
+        "tracked-props",
+        "device-pairing"
+      ],
+      "prompt": "Tracking-enabled prop devices are named in the request and are not in the portfolio project list. Which products were props with tracking, who used them, and do they belong on authoring, multidevice, or control? A pairing patent is off the axis until it has a product.",
+      "datedNote": "The portfolio patent list marks US 9,162,144 as 2015, with later related numbers. That year is on the patent list, not a work month, so the card stays off the axis."
+    },
+    {
+      "id": "q-robots",
+      "priority": 5,
+      "ask": "Robotics maturity",
+      "refs": [
+        "robots"
+      ],
+      "prompt": "Autonomous robot control is only an undated exploration card. Is that current exploration, a shipped product, or not this story? A name and a maturity are enough. This draft does not treat WebAR Tests experiments as career shipments.",
+      "datedNote": ""
+    },
+    {
+      "id": "q-kindle",
+      "priority": 6,
+      "ask": "Kindle API scope",
+      "refs": [
+        "kindle-api",
+        "sitb-pages"
+      ],
+      "prompt": "Kindle e-paper application API: Richard named it this turn, and the portfolio has a separate project for it. What did the API cover — which applications, which reader, what an outside developer could do? Keep it distinct from the book-page image service, Look Inside or SITB, which is also his server work in the portfolio and sits only on the compute lane.",
+      "datedNote": "Portfolio Kindle API project: March 2007 – April 2008, matching the Amazon employer row March 2007 – April 2008. The book-page project file starts February 2007, one month before that employer row."
+    },
+    {
+      "id": "q-companion",
+      "priority": 7,
+      "ask": "Companion and multiscreen projects",
+      "refs": [
+        "magic-leap-devices",
+        "magic-leap-tools",
+        "device-pairing"
+      ],
+      "prompt": "The portfolio describes Magic Leap companion apps on computers and phones, a mobile companion, and shared sessions across headsets. Were there earlier companion or multiscreen products — car, phone, Kindle, helmet — that should share a thread with those?",
+      "datedNote": "Portfolio Magic Leap span: November 2017 – November 2020."
+    },
+    {
+      "id": "q-nada",
+      "priority": 8,
+      "ask": "Pen tablet: LCC or NADA",
+      "refs": [
+        "lcc-pen",
+        "nada-books"
+      ],
+      "prompt": "An older unlisted timeline assigned a field-worker pen UI to NADA. The portfolio experience file assigns the pen-enabled tablet to LCC, for cellular network tools, and a dealer car-valuation GUI to NADA. Which account should this story follow, and were the LCC users field workers?",
+      "datedNote": "Portfolio LCC: May 1995 – September 1996. Portfolio NADA: March 1997 – December 1997."
+    },
+    {
+      "id": "q-phone",
+      "priority": 9,
+      "ask": "Phone framework dates",
+      "refs": [
+        "phone-frameworks"
+      ],
+      "prompt": "Phone UX frameworks sit on a dashed bar because the unlisted timeline gives a year window and the experience file has no separate role dates inside the second Microsoft span. Keep the bar, move it, or drop it?",
+      "datedNote": "Unlisted timeline window: 2010 – 2011. Portfolio employer span for that Microsoft tenure: April 2008 – March 2015. A book credit in the project list is September 2010 – January 2011. This draft does not treat the book as the framework."
+    },
+    {
+      "id": "q-patent",
+      "priority": 10,
+      "ask": "Skinnable UI patent and silicon",
+      "refs": [
+        "autopc-ui",
+        "autopc-silicon"
+      ],
+      "prompt": "Google Patents lists US 6,677,962 with a single inventor, Richard St. Clair Bailey, assigned to Microsoft. Richard's account this turn is a runtime split between control and style, so designers could work on behavior and artists on richness, aimed at efficient low-power Freescale silicon. The patent text checked for this draft does not say Freescale. Is that the right patent, and is Freescale the right silicon story? Filing and grant are not employment dates.",
+      "datedNote": "Filed 26 June 2000. Granted 13 January 2004. Portfolio AutoPC project record: December 1998 – January 2002. First Microsoft employer row in the portfolio: April 1998 – March 2007. The grant falls inside that employer row and after the AutoPC project record. It is still not an employment date."
+    },
+    {
+      "id": "q-overlaps",
+      "priority": 11,
+      "ask": "Overlapping portfolio spans",
+      "refs": [
+        "prosthetic",
+        "nus-overlays",
+        "screen-phone",
+        "ifusion",
+        "spc-queues",
+        "nada-books",
+        "auto-platform",
+        "azure-storage"
+      ],
+      "prompt": "Several portfolio spans overlap: New Resolutions with Online Resources; Ifusion with the Software Productivity Consortium and with NADA; the later automotive platform with the storage-service project. Were those concurrent engagements, or sequential roles with coarse dates?",
+      "datedNote": "New Resolutions March 1991 – April 1993 overlaps Online Resources April 1992 – April 1993. Ifusion September 1996 – March 1997 overlaps the consortium January 1997 – June 1997 and meets NADA March 1997 – December 1997. Automotive platform project April 2008 – August 2011 overlaps storage project April 2008 – September 2010."
+    },
+    {
+      "id": "q-agentic",
+      "priority": 12,
+      "ask": "Two different agent stories",
+      "refs": [
+        "quintar-agent",
+        "agentic-authoring"
+      ],
+      "prompt": "The portfolio describes a fan agent: speech on the device, some questions routed onward, sports and venue data. The request also names agentic authoring pipelines for rapid interactive experiences. Are those the same effort or two different ones? The authoring-pipeline card stays off the axis until then.",
+      "datedNote": "The portfolio marks the fan-agent work current and starts it with the other Quintar project records in September 2022. The authoring-pipeline card has no date."
+    },
+    {
+      "id": "q-ace",
+      "priority": 13,
+      "ask": "AC&E screens or external control",
+      "refs": [
+        "ace-ui",
+        "ace-gear"
+      ],
+      "prompt": "AC&E is on the authoring lane as timeline, scheduling, and network-operations UI, which matches the unlisted timeline and the portfolio. A dashed twin on the control lane asks whether that software also drove external telecom gear, or whether it was a control-room UI only.",
+      "datedNote": "Portfolio AC&E: April 1993 – May 1995."
+    }
+  ],
+  "backlog": [
+    {
+      "text": "Answer the open questions. A dashed bar should become solid, move, or leave. Do not leave a guess looking final.",
+      "refs": []
+    },
+    {
+      "text": "Keep the book-page image service and the Kindle e-paper API on different threads unless Richard says they are one system.",
+      "refs": [
+        "sitb-pages",
+        "kindle-api"
+      ]
+    },
+    {
+      "text": "Keep the videodisc simulations and the 3D fire map apart unless Richard says the portfolio sentence is one system.",
+      "refs": [
+        "hughes-videodisc",
+        "hughes-3d"
+      ]
+    },
+    {
+      "text": "Do not add former-employer implementation detail, secrets, contact information, or street addresses.",
+      "refs": []
+    },
+    {
+      "text": "Intended cadence is two passes a week. Each pass should change a dashed bar, a question, or the revision log, and should leave the tests green.",
+      "refs": []
+    },
+    {
+      "text": "After each pass, hide year numbers and read the page once. No year should remain in a title, a question, a detail, or the axis.",
+      "refs": []
+    }
+  ],
+  "sources": [
+    {
+      "label": "Portfolio repository, read only: experience rows, project list, and device cards",
+      "url": "https://github.com/richoncode/portfolio"
+    },
+    {
+      "label": "Live portfolio",
+      "url": "https://richoncode.github.io/portfolio/"
+    },
+    {
+      "label": "Unlisted interaction timeline",
+      "url": "https://richoncode.github.io/portfolio/assets/archive/interaction-timeline.html"
+    },
+    {
+      "label": "US 6,677,962 on Google Patents",
+      "url": "https://patents.google.com/patent/US6677962B1"
+    },
+    {
+      "label": "Notes from Richard in the working session that asked for this draft",
+      "url": ""
+    }
+  ],
+  "revisions": [
+    {
+      "label": "Draft assembled from the portfolio experience file, project list, and device cards; the unlisted interaction timeline; the automotive UI patent listing; and notes from Richard this turn. Year numbers default to hidden.",
+      "whenLabel": "8 November 2026"
+    }
+  ],
+  "sourceNote": "This page does not copy employer implementation notes, contact details, or addresses out of the portfolio file."
+}
+</script>
+<script id="story-logic">
+
+globalThis.StoryAPI = (function () {
+  var YEAR_RE = /\b(?:19|20)\d{2}\b/;
+  var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  var ALLOWED = ["confirmed-by-richard","portfolio-documented","tentative-date","tentative-track","exploration"];
+
+  function monthNum(value, edge) {
+    if (value == null || value === "") return null;
+    if (/^\d{4}$/.test(value)) {
+      var y = Number(value);
+      return edge === "end" ? (y + 1) * 12 : y * 12;
+    }
+    var m = /^(\d{4})-(\d{2})$/.exec(value);
+    if (!m) return null;
+    var year = Number(m[1]);
+    var month = Number(m[2]);
+    if (month < 1 || month > 12) return null;
+    return edge === "end" ? year * 12 + month : year * 12 + (month - 1);
+  }
+
+  function formatYM(value) {
+    if (/^\d{4}$/.test(value)) return value;
+    var parts = value.split("-");
+    return MONTHS[Number(parts[1]) - 1] + " " + parts[0];
+  }
+
+  function formatSpan(m, showYears) {
+    if (!showYears || !m || m.placement === "undated" || !m.start) return "";
+    var start = formatYM(m.start);
+    if (m.current) return start + " – ongoing";
+    if (!m.end) return start;
+    return start + " – " + formatYM(m.end);
+  }
+
+  function employerById(data, id) {
+    for (var i = 0; i < data.employers.length; i++) if (data.employers[i].id === id) return data.employers[i];
+    return null;
+  }
+
+  function trackById(data, id) {
+    for (var i = 0; i < data.tracks.length; i++) if (data.tracks[i].id === id) return data.tracks[i];
+    return null;
+  }
+
+  function isDashed(m, trackId) {
+    if (m.dateStatus === "tentative") return true;
+    if (m.evidence.indexOf("exploration") !== -1) return true;
+    if (m.kind === "interest") return true;
+    return (m.trackStatus || {})[trackId] === "tentative";
+  }
+
+  function markFor(m, trackId) {
+    if (m.kind === "interest") return "Interest only";
+    if (m.evidence.indexOf("exploration") !== -1) return "Exploration";
+    if (isDashed(m, trackId)) return "Guess";
+    return "";
+  }
+
+  function initialState(data) {
+    var enabled = {};
+    data.tracks.forEach(function (t) { enabled[t.id] = true; });
+    return { showYears: false, selected: null, fitted: true, trackWidth: 960, enabled: enabled };
+  }
+
+  function audit(data) {
+    var errors = [];
+    var ids = {};
+    var trackIds = {};
+    data.tracks.forEach(function (t) { trackIds[t.id] = true; });
+    ["compute","multidevice","authoring","control"].forEach(function (id) {
+      if (!trackIds[id]) errors.push("missing track " + id);
+    });
+    if (data.tracks.length !== 4) errors.push("need 4 tracks");
+    var amazon = employerById(data, "amazon");
+    if (!amazon || amazon.start !== "2007-03" || amazon.end !== "2008-04" || amazon.current) errors.push("amazon employer dates");
+    var hughes = employerById(data, "hughes");
+    if (!hughes || hughes.start !== "1990-04" || hughes.end !== "1991-03") errors.push("hughes employer dates");
+    data.employers.forEach(function (e) {
+      if (!e.current && monthNum(e.start, "start") >= monthNum(e.end, "end")) errors.push("employer order " + e.id);
+      if (e.current && e.end) errors.push("employer current has end " + e.id);
+    });
+    data.milestones.forEach(function (m) {
+      if (ids[m.id]) errors.push("dup " + m.id);
+      ids[m.id] = true;
+      ["title","short","summary","org"].forEach(function (key) {
+        if (m[key] && YEAR_RE.test(m[key])) errors.push("year in " + key + " " + m.id);
+      });
+      (m.detail || []).forEach(function (p) { if (YEAR_RE.test(p)) errors.push("year in detail " + m.id); });
+      (m.caveats || []).forEach(function (p) { if (YEAR_RE.test(p)) errors.push("year in caveat " + m.id); });
+      if (!m.tracks.length) errors.push("no track " + m.id);
+      m.tracks.forEach(function (t) { if (!trackIds[t]) errors.push("bad track " + m.id); });
+      if (m.placement === "undated") {
+        if (m.start || m.end || m.current) errors.push("undated has dates " + m.id);
+      } else if (m.placement === "axis") {
+        if (!m.start) errors.push("axis missing start " + m.id);
+        if (m.current && m.end) errors.push("current has end " + m.id);
+        if (!m.current && !m.end) errors.push("axis missing end " + m.id);
+        if (m.end && monthNum(m.start, "start") >= monthNum(m.end, "end")) errors.push("order " + m.id);
+        var endNum = m.current ? monthNum(data.axis.end, "end") : monthNum(m.end, "end");
+        if (!(monthNum(m.start, "start") < endNum)) errors.push("span " + m.id);
+      } else errors.push("bad placement " + m.id);
+      [m.start, m.end].forEach(function (d) {
+        if (d && !/^\d{4}(-\d{2})?$/.test(d)) errors.push("precision " + m.id);
+      });
+      m.evidence.forEach(function (e) {
+        if (ALLOWED.indexOf(e) === -1) errors.push("bad evidence " + m.id + " " + e);
+      });
+      if (m.dateStatus === "tentative" && m.evidence.indexOf("tentative-date") === -1) errors.push("tentative without flag " + m.id);
+      if (m.evidence.indexOf("tentative-date") !== -1 && m.dateStatus !== "tentative") errors.push("flag without tentative " + m.id);
+      if (m.evidence.indexOf("tentative-track") !== -1) {
+        var ok = m.tracks.some(function (t) { return (m.trackStatus || {})[t] === "tentative"; });
+        if (!ok) errors.push("tentative track missing " + m.id);
+      }
+      if (m.evidence.indexOf("exploration") !== -1 && m.placement !== "undated") errors.push("exploration dated " + m.id);
+      if (m.dateSource === "employer" || m.dateSource === "project") {
+        var emp = employerById(data, m.employerId);
+        if (!emp) errors.push("missing employer " + m.id);
+        else if (m.dateSource === "employer") {
+          if (m.start !== emp.start || m.end !== emp.end || !!m.current !== !!emp.current) errors.push("employer mismatch " + m.id);
+        }
+      } else if (m.dateSource === "prior-timeline") {
+        if (m.dateStatus !== "tentative") errors.push("prior timeline not tentative " + m.id);
+      } else if (m.dateSource === "none") {
+        if (m.placement !== "undated") errors.push("none should be undated " + m.id);
+      } else errors.push("bad dateSource " + m.id);
+    });
+    data.tracks.forEach(function (t) {
+      var n = data.milestones.filter(function (m) { return m.tracks.indexOf(t.id) !== -1; }).length;
+      if (n < 1) errors.push("empty lane " + t.id);
+    });
+    var threads = {};
+    data.milestones.forEach(function (m) {
+      if (!threads[m.thread]) threads[m.thread] = [];
+      threads[m.thread].push(m);
+    });
+    var spanned = Object.keys(threads).some(function (k) {
+      var set = {};
+      threads[k].forEach(function (m) { m.tracks.forEach(function (t) { set[t] = true; }); });
+      return Object.keys(set).length >= 2;
+    });
+    if (!spanned) errors.push("no cross-track thread");
+    function byId(id) { return data.milestones.filter(function (m) { return m.id === id; })[0]; }
+    if (byId("kindle-api").thread === byId("sitb-pages").thread) errors.push("kindle conflated with look inside");
+    if (byId("hughes-videodisc").thread === byId("hughes-3d").thread) errors.push("hughes systems conflated");
+    if (byId("quintar-agent").thread === byId("quintar-renderer").thread) errors.push("fan agent conflated with renderer");
+    if (!(byId("sitb-pages").start < amazon.start)) errors.push("sitb conflict not represented");
+    if (byId("kindle-api").start !== amazon.start || byId("kindle-api").end !== amazon.end) errors.push("kindle api vs amazon");
+    if (byId("hughes-videodisc").start !== hughes.start || byId("hughes-3d").start !== hughes.start) errors.push("hughes bar used memory start");
+    ["prosthetic"].forEach(function (id) {
+      var m = byId(id);
+      if (m.tracks.indexOf("compute") === -1 || m.tracks.indexOf("control") === -1) errors.push("prosthetic tracks");
+      if (m.evidence.indexOf("confirmed-by-richard") === -1) errors.push("prosthetic confirm");
+    });
+    if (byId("radio-interest").kind !== "interest" || byId("radio-interest").placement !== "undated") errors.push("radio");
+    if (byId("robots").evidence.indexOf("exploration") === -1) errors.push("robots");
+    var refs = {};
+    data.questions.forEach(function (q) { q.refs.forEach(function (id) { refs[id] = true; }); });
+    data.backlog.forEach(function (b) { (b.refs || []).forEach(function (id) { refs[id] = true; }); });
+    data.milestones.forEach(function (m) {
+      var needs = m.placement === "undated" || m.evidence.some(function (e) {
+        return e === "tentative-date" || e === "tentative-track" || e === "exploration";
+      });
+      if (needs && !refs[m.id]) errors.push("unref " + m.id);
+    });
+    data.questions.forEach(function (q, i) {
+      if (q.priority !== i + 1) errors.push("priority " + q.id);
+      if (YEAR_RE.test(q.prompt) || YEAR_RE.test(q.ask)) errors.push("year in question " + q.id);
+    });
+    data.tracks.forEach(function (t) {
+      if (YEAR_RE.test(t.blurb) || YEAR_RE.test(t.name) || YEAR_RE.test(t.short)) errors.push("year in track " + t.id);
+    });
+    [data.intro, data.banner, data.legend, data.keys, data.questionsLede, data.undatedLede, data.anchorLede, data.emptyDetail, data.sourceNote, data.yearHidden, data.yearShown].forEach(function (s) {
+      if (YEAR_RE.test(s)) errors.push("year in chrome copy");
+    });
+    data.backlog.forEach(function (b) { if (YEAR_RE.test(b.text)) errors.push("year in backlog"); });
+    data.sources.forEach(function (s) { if (YEAR_RE.test(s.label)) errors.push("year in source label"); });
+    data.revisions.forEach(function (r) { if (YEAR_RE.test(r.label)) errors.push("year in revision label"); });
+    return errors;
+  }
+
+  function layoutBars(data, state, trackId) {
+    var items = data.milestones.filter(function (m) {
+      return m.placement === "axis" && m.tracks.indexOf(trackId) !== -1;
+    });
+    var axisStart = monthNum(data.axis.start, "start");
+    var axisEnd = monthNum(data.axis.end, "end");
+    var span = axisEnd - axisStart;
+    var prepared = items.map(function (m) {
+      var a = monthNum(m.start, "start");
+      var b = m.current ? axisEnd : monthNum(m.end, "end");
+      return { m: m, a: a, b: b, startFrac: (a - axisStart) / span, endFrac: (b - axisStart) / span };
+    }).sort(function (x, y) { return x.a - y.a || x.b - y.b; });
+    var placed = [];
+    prepared.forEach(function (item) {
+      var row = 0;
+      while (placed.some(function (p) { return p.row === row && p.b > item.a; })) row += 1;
+      item.row = row;
+      placed.push(item);
+    });
+    var rows = placed.reduce(function (max, item) { return Math.max(max, item.row + 1); }, 1);
+    return {
+      rows: rows,
+      bars: placed.map(function (item) {
+        var left = item.startFrac * state.trackWidth;
+        var width = Math.max(10, (item.endFrac - item.startFrac) * state.trackWidth);
+        if (left + width > state.trackWidth - 2) width = Math.max(10, state.trackWidth - 2 - left);
+        var when = formatSpan(item.m, state.showYears);
+        var mark = markFor(item.m, trackId);
+        var selected = state.selected === item.m.id;
+        var related = false;
+        if (state.selected && state.selected !== item.m.id) {
+          var sel = data.milestones.filter(function (x) { return x.id === state.selected; })[0];
+          related = !!(sel && sel.thread === item.m.thread);
+        }
+        var aria = [item.m.title, trackById(data, trackId).name, mark, when].filter(Boolean).join(". ");
+        return {
+          id: item.m.id, short: item.m.short, mark: mark, when: when, aria: aria,
+          left: left, width: width, top: 8 + item.row * 64, showText: width >= 64,
+          selected: selected, related: related,
+          dashed: mark === "Guess", explore: mark === "Exploration" || mark === "Interest only"
+        };
+      })
+    };
+  }
+
+  function detailModel(data, state) {
+    if (!state.selected) return { text: [data.emptyDetail], chips: [], when: "" };
+    var m = data.milestones.filter(function (x) { return x.id === state.selected; })[0];
+    if (!m) return { text: [data.emptyDetail], chips: [], when: "" };
+    var chips = [];
+    if (m.evidence.indexOf("confirmed-by-richard") !== -1) chips.push("Richard");
+    if (m.evidence.indexOf("portfolio-documented") !== -1) chips.push("Portfolio");
+    if (m.evidence.indexOf("tentative-date") !== -1) chips.push("Date is a guess");
+    if (m.evidence.indexOf("tentative-track") !== -1) chips.push("Lane is a guess");
+    if (m.evidence.indexOf("exploration") !== -1) chips.push("Exploration");
+    if (m.kind === "interest") chips.push("Interest only");
+    var lines = [];
+    lines.push(m.title);
+    if (m.org) lines.push("Context: " + m.org);
+    var when = formatSpan(m, state.showYears);
+    if (when) lines.push(when);
+    lines.push(m.tracks.map(function (id) { return trackById(data, id).name; }).join(" · "));
+    lines.push(m.summary);
+    (m.detail || []).forEach(function (p) { lines.push(p); });
+    (m.caveats || []).forEach(function (p) { lines.push("Caveat: " + p); });
+    var related = data.milestones.filter(function (x) { return x.thread === m.thread && x.id !== m.id; });
+    related.forEach(function (r) {
+      lines.push(r.title + " is the same story thread. Not a cause.");
+    });
+    if (m.tracks.length > 1) lines.push("Drawn on more than one lane because the same project is read two ways. Not a cause.");
+    data.questions.filter(function (q) { return q.refs.indexOf(m.id) !== -1; }).forEach(function (q) {
+      lines.push("Open question: " + q.ask);
+    });
+    (m.sources || []).forEach(function (s) { lines.push("Source: " + s); });
+    return { text: lines, chips: chips, when: when };
+  }
+
+  function viewModel(data, state) {
+    var ticks = [];
+    var axisStart = monthNum(data.axis.start, "start");
+    var axisEnd = monthNum(data.axis.end, "end");
+    data.axis.ticks.forEach(function (year) {
+      var left = (monthNum(year, "start") - axisStart) / (axisEnd - axisStart) * state.trackWidth;
+      ticks.push({ year: state.showYears ? year : "", left: left });
+    });
+    var questions = data.questions.map(function (q) {
+      return { ask: q.priority + ". " + q.ask, prompt: q.prompt, dated: state.showYears ? (q.datedNote || "") : "" };
+    });
+    var narratives = data.tracks.filter(function (t) { return state.enabled[t.id] !== false; }).map(function (t) {
+      return { name: t.name, blurb: t.blurb };
+    });
+    var lanes = data.tracks.filter(function (t) { return state.enabled[t.id] !== false; }).map(function (t) {
+      var packed = layoutBars(data, state, t.id);
+      return { id: t.id, short: t.short, name: t.name, rows: packed.rows, bars: packed.bars };
+    });
+    var undated = data.milestones.filter(function (m) {
+      return m.placement === "undated" && m.tracks.some(function (t) { return state.enabled[t.id] !== false; });
+    }).map(function (m) {
+      var trackId = m.tracks[0];
+      return {
+        id: m.id, title: m.title, summary: m.summary, mark: markFor(m, trackId),
+        selected: state.selected === m.id,
+        related: !!(state.selected && state.selected !== m.id && data.milestones.some(function (s) {
+          return s.id === state.selected && s.thread === m.thread;
+        }))
+      };
+    });
+    var connection = "";
+    if (state.selected) {
+      var chosen = data.milestones.filter(function (m) { return m.id === state.selected; })[0];
+      if (chosen) {
+        var spanText = formatSpan(chosen, state.showYears);
+        connection = "Showing " + chosen.title + (spanText ? ", " + spanText : "") + ".";
+        var relatedStories = data.milestones.filter(function (m) { return m.thread === chosen.thread && m.id !== chosen.id; });
+        if (relatedStories.length) {
+          connection += " Same story: " + relatedStories.map(function (m) { return m.title; }).join("; ") + ". Not a cause.";
+        } else if (chosen.tracks.length > 1) {
+          connection += " Drawn on " + chosen.tracks.map(function (id) { return trackById(data, id).name; }).join(" and ") + ". Not a cause.";
+        }
+      }
+    }
+    var detail = detailModel(data, state);
+    var anchors = [];
+    if (state.showYears) {
+      anchors = data.employers.map(function (e) {
+        var end = e.current ? "ongoing" : formatYM(e.end);
+        return e.name + ": " + formatYM(e.start) + " – " + end;
+      });
+    }
+    return {
+      banner: data.banner,
+      title: data.title,
+      subtitle: data.subtitle,
+      intro: data.intro,
+      legend: data.legend,
+      keys: data.keys,
+      yearStatus: state.showYears ? data.yearShown : data.yearHidden,
+      questionsHeading: data.questionsHeading,
+      questionsLede: data.questionsLede,
+      questions: questions,
+      narratives: narratives,
+      timelineHeading: data.timelineHeading,
+      connection: connection,
+      lanes: lanes,
+      ticks: ticks,
+      nowLabel: "now",
+      undatedHeading: data.undatedHeading,
+      undatedLede: data.undatedLede,
+      undated: undated,
+      detail: detail.text,
+      chips: detail.chips,
+      backlogHeading: data.backlogHeading,
+      backlog: data.backlog.map(function (b) { return b.text; }),
+      sourcesHeading: data.sourcesHeading,
+      sources: data.sources.map(function (s) { return s.label; }),
+      sourceNote: data.sourceNote,
+      revisionHeading: data.revisionHeading,
+      revisions: data.revisions.map(function (r) {
+        return state.showYears ? (r.whenLabel + " — " + r.label) : r.label;
+      }),
+      anchorHeading: state.showYears ? data.anchorHeading : "",
+      anchorLede: state.showYears ? data.anchorLede : "",
+      anchors: anchors
+    };
+  }
+
+  function flatten(vm) {
+    var out = [];
+    function walk(v) {
+      if (typeof v === "string") out.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") Object.keys(v).forEach(function (k) { walk(v[k]); });
+    }
+    walk(vm);
+    return out;
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text) n.textContent = text;
+    return n;
+  }
+
+  function mount(data, doc) {
+    var state = initialState(data);
+    var root = doc;
+    function render() {
+      var scroller = root.getElementById("board-scroll");
+      var keep = scroller ? scroller.scrollLeft : 0;
+      var vm = viewModel(data, state);
+      root.getElementById("banner").textContent = vm.banner;
+      root.getElementById("page-title").textContent = vm.title;
+      root.getElementById("subtitle").textContent = vm.subtitle;
+      root.getElementById("intro").textContent = vm.intro;
+      root.getElementById("legend").textContent = vm.legend;
+      root.getElementById("keys").textContent = vm.keys;
+      root.getElementById("year-status").textContent = vm.yearStatus;
+      root.getElementById("toggle-years").setAttribute("aria-pressed", state.showYears ? "true" : "false");
+      var filters = root.getElementById("filters");
+      filters.textContent = "";
+      data.tracks.forEach(function (t, index) {
+        var b = el("button", "filter", t.short);
+        b.type = "button";
+        b.dataset.track = t.id;
+        b.setAttribute("aria-pressed", state.enabled[t.id] ? "true" : "false");
+        b.setAttribute("aria-label", "Lane " + (index + 1) + " " + t.name);
+        filters.appendChild(b);
+      });
+      var qRoot = root.getElementById("questions");
+      qRoot.textContent = "";
+      qRoot.appendChild(el("h2", "", vm.questionsHeading));
+      qRoot.appendChild(el("p", "lede", vm.questionsLede));
+      vm.questions.forEach(function (q, i) {
+        var card = el("article", "q");
+        card.id = data.questions[i].id;
+        card.appendChild(el("p", "ask", q.ask));
+        card.appendChild(el("p", "", q.prompt));
+        if (q.dated) card.appendChild(el("p", "dated", q.dated));
+        qRoot.appendChild(card);
+      });
+      var stories = root.getElementById("narratives");
+      stories.textContent = "";
+      vm.narratives.forEach(function (n) {
+        var card = el("article", "narrative");
+        card.appendChild(el("h3", "", n.name));
+        card.appendChild(el("p", "", n.blurb));
+        stories.appendChild(card);
+      });
+      root.getElementById("timeline-heading").textContent = vm.timelineHeading;
+      root.getElementById("connection").textContent = vm.connection;
+      var axis = root.getElementById("axis");
+      axis.style.width = state.trackWidth + "px";
+      axis.textContent = "";
+      var axisStart = monthNum(data.axis.start, "start");
+      var axisEnd = monthNum(data.axis.end, "end");
+      var nowLeft = (monthNum(data.axis.now, "start") - axisStart) / (axisEnd - axisStart) * state.trackWidth;
+      vm.ticks.forEach(function (tick) {
+        var mark = el("div", "tick");
+        mark.style.left = tick.left + "px";
+        if (tick.year && Math.abs(tick.left - nowLeft) > 36) mark.appendChild(el("span", "year-num", tick.year));
+        axis.appendChild(mark);
+      });
+      var now = el("div", "now");
+      now.style.left = nowLeft + "px";
+      now.appendChild(el("span", "", vm.nowLabel));
+      axis.appendChild(now);
+      var lanes = root.getElementById("lanes");
+      lanes.textContent = "";
+      if (!vm.lanes.length) lanes.appendChild(el("p", "empty", "Turn a lane back on."));
+      vm.lanes.forEach(function (lane) {
+        var row = el("div", "lane");
+        row.dataset.lane = lane.id;
+        var label = el("div", "sticky-label");
+        label.appendChild(el("span", "lane-name", lane.short));
+        row.appendChild(label);
+        var track = el("div", "track");
+        track.dataset.track = lane.id;
+        track.style.width = state.trackWidth + "px";
+        track.style.height = (16 + lane.rows * 64) + "px";
+        lane.bars.forEach(function (bar) {
+          var b = el("button", "bar");
+          b.type = "button";
+          b.dataset.mid = bar.id;
+          b.dataset.track = lane.id;
+          if (bar.dashed) b.classList.add("is-dashed");
+          if (bar.explore) b.classList.add("is-explore");
+          if (bar.selected) b.classList.add("is-selected");
+          if (bar.related) b.classList.add("is-related");
+          b.style.left = bar.left + "px";
+          b.style.width = bar.width + "px";
+          b.style.top = bar.top + "px";
+          b.setAttribute("aria-label", bar.aria);
+          b.title = bar.aria;
+          if (bar.showText) {
+            b.appendChild(el("strong", "", bar.short));
+            if (bar.mark) b.appendChild(el("span", "mark", bar.mark));
+            if (bar.when) b.appendChild(el("span", "when", bar.when));
+          }
+          track.appendChild(b);
+        });
+        row.appendChild(track);
+        lanes.appendChild(row);
+      });
+      var undated = root.getElementById("undated");
+      undated.textContent = "";
+      undated.appendChild(el("h2", "", vm.undatedHeading));
+      undated.appendChild(el("p", "lede", vm.undatedLede));
+      var grid = el("div", "undated-grid");
+      vm.undated.forEach(function (card) {
+        var b = el("button", "card-btn");
+        b.type = "button";
+        b.dataset.mid = card.id;
+        if (card.selected) b.classList.add("is-selected");
+        if (card.related) b.classList.add("is-related");
+        b.appendChild(el("strong", "", card.title));
+        if (card.mark) b.appendChild(el("span", "mark", card.mark));
+        b.appendChild(el("span", "", card.summary));
+        grid.appendChild(b);
+      });
+      undated.appendChild(grid);
+      var detail = root.getElementById("detail");
+      detail.textContent = "";
+      detail.appendChild(el("h2", "", "Evidence"));
+      if (vm.chips.length) {
+        var chips = el("div", "chips");
+        vm.chips.forEach(function (c) {
+          var chip = el("span", "chip", c);
+          if (/guess|Exploration|Interest/i.test(c)) chip.classList.add("guess");
+          chips.appendChild(chip);
+        });
+        detail.appendChild(chips);
+      }
+      vm.detail.forEach(function (line, i) {
+        detail.appendChild(el("p", i === 0 && state.selected ? "detail-title" : "", line));
+      });
+      var backlog = root.getElementById("backlog");
+      backlog.textContent = "";
+      backlog.appendChild(el("h2", "", vm.backlogHeading));
+      var bl = el("ul", "");
+      vm.backlog.forEach(function (t) { bl.appendChild(el("li", "", t)); });
+      backlog.appendChild(bl);
+      var sources = root.getElementById("sources");
+      sources.textContent = "";
+      sources.appendChild(el("h2", "", vm.sourcesHeading));
+      var ul = el("ul", "");
+      data.sources.forEach(function (s) {
+        var li = el("li", "");
+        if (s.url) {
+          var a = el("a", "", s.label);
+          a.href = s.url;
+          a.target = "_blank";
+          a.rel = "noreferrer";
+          li.appendChild(a);
+        } else li.textContent = s.label;
+        ul.appendChild(li);
+      });
+      sources.appendChild(ul);
+      sources.appendChild(el("p", "", vm.sourceNote));
+      var rev = root.getElementById("revisions");
+      rev.textContent = "";
+      rev.appendChild(el("h2", "", vm.revisionHeading));
+      var rl = el("ul", "");
+      vm.revisions.forEach(function (t) { rl.appendChild(el("li", "", t)); });
+      rev.appendChild(rl);
+      var anchors = root.getElementById("anchors");
+      anchors.textContent = "";
+      if (state.showYears) {
+        anchors.appendChild(el("h2", "", vm.anchorHeading));
+        anchors.appendChild(el("p", "lede", vm.anchorLede));
+        var al = el("ul", "");
+        vm.anchors.forEach(function (t) { al.appendChild(el("li", "", t)); });
+        anchors.appendChild(al);
+      }
+      if (scroller) scroller.scrollLeft = keep;
+    }
+
+    function fit() {
+      var scroller = root.getElementById("board-scroll");
+      var label = parseFloat(getComputedStyle(root.documentElement).getPropertyValue("--label-w")) || 132;
+      var w = Math.max(280, scroller.clientWidth - label - 18);
+      state.fitted = true;
+      if (Math.abs(w - state.trackWidth) < 2) {
+        state.trackWidth = w;
+        return;
+      }
+      state.trackWidth = w;
+      render();
+    }
+
+    function zoom(factor) {
+      state.fitted = false;
+      state.trackWidth = Math.max(280, Math.min(9000, Math.round(state.trackWidth * factor)));
+      render();
+    }
+
+    function select(id, opts) {
+      opts = opts || {};
+      state.selected = id;
+      if (id) root.location.hash = "m=" + id;
+      else if ((root.location.hash || "").indexOf("m=") !== -1) root.location.hash = "";
+      render();
+      if (opts.focus) {
+        var again = root.querySelector(opts.focus);
+        if (again) again.focus();
+      }
+      var detail = root.getElementById("detail");
+      if (id && detail && !opts.focus && root.defaultView.innerWidth < 980) detail.scrollIntoView({ block: "nearest" });
+    }
+
+    function move(deltaLane, deltaItem) {
+      var lanes = Array.prototype.slice.call(root.querySelectorAll(".lane"));
+      var flat = [];
+      lanes.forEach(function (lane, laneIndex) {
+        Array.prototype.slice.call(lane.querySelectorAll("[data-mid]")).forEach(function (bar, itemIndex) {
+          flat.push({ id: bar.dataset.mid, lane: laneIndex, item: itemIndex, el: bar });
+        });
+      });
+      Array.prototype.slice.call(root.querySelectorAll("#undated [data-mid]")).forEach(function (bar, itemIndex) {
+        flat.push({ id: bar.dataset.mid, lane: lanes.length, item: itemIndex, el: bar });
+      });
+      if (!flat.length) return;
+      var current = flat.findIndex(function (x) { return x.id === state.selected; });
+      if (current < 0) {
+        select(flat[0].id, { focus: "[data-mid=\"" + flat[0].id + "\"]" });
+        return;
+      }
+      var here = flat[current];
+      var next = here;
+      if (deltaItem) {
+        var laneItems = flat.filter(function (x) { return x.lane === here.lane; });
+        var idx = laneItems.findIndex(function (x) { return x.el === here.el; });
+        next = laneItems[Math.max(0, Math.min(laneItems.length - 1, idx + deltaItem))];
+      } else if (deltaLane) {
+        var dest = flat.filter(function (x) { return x.lane === here.lane + deltaLane; });
+        if (!dest.length) return;
+        next = dest[Math.min(here.item, dest.length - 1)];
+      }
+      var focus = next.lane < lanes.length
+        ? ".lane[data-lane=\"" + lanes[next.lane].dataset.lane + "\"] [data-mid=\"" + next.id + "\"]"
+        : "#undated [data-mid=\"" + next.id + "\"]";
+      select(next.id, { focus: focus });
+    }
+
+    root.body.addEventListener("click", function (event) {
+      var bar = event.target.closest("[data-mid]");
+      if (bar) { select(bar.dataset.mid); return; }
+      var filter = event.target.closest("[data-track]");
+      if (filter) {
+        state.enabled[filter.dataset.track] = !state.enabled[filter.dataset.track];
+        render();
+      }
+    });
+    root.getElementById("toggle-years").addEventListener("click", function () {
+      state.showYears = !state.showYears;
+      render();
+    });
+    root.getElementById("fit").addEventListener("click", fit);
+    root.getElementById("zoom-in").addEventListener("click", function () { zoom(1.25); });
+    root.getElementById("zoom-out").addEventListener("click", function () { zoom(0.8); });
+    root.addEventListener("keydown", function (event) {
+      var tag = event.target && event.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      var key = event.key;
+      if (key === "y" || key === "Y") { state.showYears = !state.showYears; render(); event.preventDefault(); }
+      else if (key === "f" || key === "F") { fit(); event.preventDefault(); }
+      else if (key === "+" || key === "=") { zoom(1.25); event.preventDefault(); }
+      else if (key === "-" || key === "_") { zoom(0.8); event.preventDefault(); }
+      else if (key === "Escape") { select(null); event.preventDefault(); }
+      else if (key >= "1" && key <= "4") {
+        var t = data.tracks[Number(key) - 1];
+        if (t) { state.enabled[t.id] = !state.enabled[t.id]; render(); event.preventDefault(); }
+      } else if (key === "ArrowRight") { move(0, 1); event.preventDefault(); }
+      else if (key === "ArrowLeft") { move(0, -1); event.preventDefault(); }
+      else if (key === "ArrowDown") { move(1, 0); event.preventDefault(); }
+      else if (key === "ArrowUp") { move(-1, 0); event.preventDefault(); }
+    });
+    var hash = (root.location.hash || "").replace(/^#/, "");
+    var found = /(?:^|&)m=([^&]+)/.exec(hash);
+    if (found) state.selected = decodeURIComponent(found[1]);
+    render();
+    root.defaultView.addEventListener("resize", function () { if (state.fitted) fit(); });
+    root.defaultView.addEventListener("load", function () { if (state.fitted) fit(); });
+    root.defaultView.requestAnimationFrame(fit);
+  }
+
+  return {
+    YEAR_RE: YEAR_RE,
+    initialState: initialState,
+    viewModel: viewModel,
+    flatten: flatten,
+    audit: audit,
+    formatSpan: formatSpan,
+    isDashed: isDashed,
+    mount: mount
+  };
+})();
+
+</script>
+<script>
+StoryAPI.mount(JSON.parse(document.getElementById("story-data").textContent), document);
+</script>
+</body>
+</html>
