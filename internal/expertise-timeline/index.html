@@ -185,6 +185,7 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 #time-spacer { height: 1px; }
 .popout {
   position: fixed; z-index: 40; max-height: min(320px, 46vh); overflow: auto;
+  touch-action: pan-y;
   background: var(--paper); color: var(--ink); border: 1px solid var(--line);
   border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
@@ -2434,6 +2435,15 @@ globalThis.StoryAPI = (function () {
     return Math.exp(-accumulatedDelta * WHEEL_SENSITIVITY);
   }
 
+  function chartWheelAction(dx, dy, ctrlKey, shiftKey) {
+    var adx = Math.abs(dx) || 0;
+    var ady = Math.abs(dy) || 0;
+    if (ctrlKey) return "zoom";
+    if (shiftKey && ady > adx) return "pan";
+    if (adx >= 0.5) return "pan";
+    return "page";
+  }
+
   function visibleMonthsForScale(scale) {
     return WINDOW_MONTHS / scale;
   }
@@ -3463,12 +3473,26 @@ globalThis.StoryAPI = (function () {
         paintView();
       });
     }
-    board.addEventListener("wheel", function (event) {
+    var pinch = null;
+    var drag = null;
+    var wheelGesture = null;
+    function chartGestureTarget(node) {
+      var el = node && node.nodeType === 1 ? node : (node && node.parentElement);
+      if (!el || !el.closest) return false;
+      if (el.closest("#board-scroll")) return true;
+      var pop = root.getElementById("popout");
+      return !!(pop && !pop.hidden && el.closest("#popout"));
+    }
+    root.addEventListener("wheel", function (event) {
+      if (!chartGestureTarget(event.target)) return;
       var dy = event.deltaY;
-      if (event.deltaMode === 1) dy *= 16;
-      else if (event.deltaMode === 2) dy *= 400;
-      if (event.ctrlKey) {
-        event.preventDefault();
+      var dx = event.deltaX;
+      if (event.deltaMode === 1) { dy *= 16; dx *= 16; }
+      else if (event.deltaMode === 2) { dy *= 400; dx *= 400; }
+      var action = chartWheelAction(dx, dy, event.ctrlKey, event.shiftKey);
+      if (action === "page") return;
+      event.preventDefault();
+      if (action === "zoom") {
         var nowMs = Date.now();
         if (!wheelGesture || nowMs - wheelGesture.last > 200) {
           wheelGesture = { startScale: state.fitted ? WINDOW_MONTHS / axisSpanMonths(data) : (state.scale || 1), delta: 0, last: nowMs };
@@ -3478,21 +3502,10 @@ globalThis.StoryAPI = (function () {
         zoomToScale(pinchScale(wheelGesture.startScale, wheelRatio(wheelGesture.delta)), event.clientX);
         return;
       }
-      var dx = event.deltaX;
       if (event.shiftKey && Math.abs(dy) > Math.abs(dx)) dx = dy;
-      if (Math.abs(dx) < 0.5) return;
-      event.preventDefault();
       panByPixels(dx);
-    }, { passive: false });
-    var pinch = null;
-    var drag = null;
-    var wheelGesture = null;
-    function touchDistance(touches) {
-      var dx = touches[0].clientX - touches[1].clientX;
-      var dy = touches[0].clientY - touches[1].clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-    board.addEventListener("touchstart", function (event) {
+    }, { capture: true, passive: false });
+    function onChartTouchStart(event) {
       if (event.touches.length === 2) {
         pinch = {
           dist: touchDistance(event.touches),
@@ -3503,8 +3516,8 @@ globalThis.StoryAPI = (function () {
       } else if (event.touches.length === 1) {
         drag = { x: event.touches[0].clientX, y: event.touches[0].clientY, axis: "" };
       }
-    }, { passive: true });
-    board.addEventListener("touchmove", function (event) {
+    }
+    function onChartTouchMove(event) {
       if (event.touches.length === 2 && pinch) {
         event.preventDefault();
         var dist = touchDistance(event.touches);
@@ -3524,12 +3537,27 @@ globalThis.StoryAPI = (function () {
         panByPixels(-dx);
         drag.x = event.touches[0].clientX;
       }
-    }, { passive: false });
-    board.addEventListener("touchend", function (event) {
+    }
+    function onChartTouchEnd(event) {
       if (event.touches.length < 2) pinch = null;
       if (event.touches.length === 0) drag = null;
-    });
+    }
+    board.addEventListener("touchstart", onChartTouchStart, { passive: true });
+    board.addEventListener("touchmove", onChartTouchMove, { passive: false });
+    board.addEventListener("touchend", onChartTouchEnd);
     board.addEventListener("touchcancel", function () { pinch = null; drag = null; });
+    var popoutEl = root.getElementById("popout");
+    if (popoutEl) {
+      popoutEl.addEventListener("touchstart", onChartTouchStart, { passive: true });
+      popoutEl.addEventListener("touchmove", onChartTouchMove, { passive: false });
+      popoutEl.addEventListener("touchend", onChartTouchEnd);
+      popoutEl.addEventListener("touchcancel", function () { pinch = null; drag = null; });
+    }
+    function touchDistance(touches) {
+      var dx = touches[0].clientX - touches[1].clientX;
+      var dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
     root.addEventListener("mouseover", function (event) {
       var bar = event.target.closest && event.target.closest(".bar, .card-btn");
       if (!bar || !bar.dataset.mid) return;
@@ -3602,6 +3630,7 @@ globalThis.StoryAPI = (function () {
     WHEEL_SENSITIVITY: WHEEL_SENSITIVITY,
     pinchScale: pinchScale,
     wheelRatio: wheelRatio,
+    chartWheelAction: chartWheelAction,
     SCALE_MAX: SCALE_MAX,
     MAX_LAYOUT_PX: MAX_LAYOUT_PX,
     clampScale: clampScale,

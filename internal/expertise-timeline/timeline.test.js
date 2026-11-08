@@ -471,6 +471,19 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
   assert.equal(hughes.showText, false);
 });
 
+test('a wheel over the open popout still pans and pinches the chart', () => {
+  assert.equal(api.chartWheelAction(240, 0, false, false), 'pan');
+  assert.equal(api.chartWheelAction(4, 80, false, false), 'pan');
+  assert.equal(api.chartWheelAction(0, 80, false, false), 'page');
+  assert.equal(api.chartWheelAction(0, -40, true, false), 'zoom');
+  assert.equal(api.chartWheelAction(2, 90, false, true), 'pan');
+  assert.match(html, /addEventListener\("wheel", function \(event\) \{[\s\S]*chartGestureTarget\(event\.target\)[\s\S]*capture: true/);
+  assert.match(html, /el\.closest\("#popout"\)/);
+  assert.doesNotMatch(html, /board\.addEventListener\("wheel"/);
+  const popListeners = html.match(/popoutEl\.addEventListener\("touchmove"/g) || [];
+  assert.equal(popListeners.length, 1);
+});
+
 test('the page is an unlisted internal draft and is not in the public catalog', () => {
   assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
   assert.match(html, /Internal working draft/);
