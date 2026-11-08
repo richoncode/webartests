@@ -192,6 +192,19 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .popout h3 { margin: 0 0 6px; font-size: 1.02rem; }
 .popout p { margin: 0 0 6px; font-size: 0.9rem; }
 .bar-copy { display: block; max-width: 100%; }
+.bar.has-brand .bar-copy { max-width: calc(100% - 84px); }
+.bar-brand {
+  position: absolute; right: 8px; top: 6px; bottom: 6px; width: 76px;
+  display: flex; align-items: center; justify-content: flex-end; pointer-events: none;
+}
+.bar-brand img {
+  display: block; max-width: 76px; max-height: 28px; width: auto; height: auto;
+  background: #fff; border-radius: 4px; padding: 3px 5px; box-sizing: border-box;
+}
+.brand-name {
+  font-size: 11px; font-weight: 750; line-height: 1.15; text-align: right;
+  letter-spacing: 0.01em; color: inherit;
+}
 .bar-title { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .card-sub { display: block; margin-top: 4px; color: var(--muted); font-size: 0.92rem; line-height: 1.35; }
 .bar-title .mark { margin: 0; flex: none; }
@@ -519,6 +532,25 @@ li { margin: 6px 0; }
       "current": true
     }
   ],
+  "brands": {
+    "ms1": { "label": "Microsoft", "logo": "brands/microsoft-wordmark.svg" },
+    "ms2": { "label": "Microsoft", "logo": "brands/microsoft-wordmark.svg" },
+    "amazon": { "label": "Amazon.com", "logo": "brands/amazon-wordmark.svg" },
+    "zenith": { "label": "Zenith" },
+    "hughes": { "label": "Hughes" },
+    "new-resolutions": { "label": "New Resolutions" },
+    "online-resources": { "label": "Online Resources" },
+    "ace": { "label": "AC&E" },
+    "lcc": { "label": "LCC" },
+    "ifusion": { "label": "Ifusion" },
+    "spc": { "label": "SPC", "full": "Software Productivity Consortium" },
+    "nada": { "label": "NADA" },
+    "daqri": { "label": "DAQRI" },
+    "margrave": { "label": "Margrave" },
+    "magic-leap": { "label": "Magic Leap" },
+    "niantic": { "label": "Niantic" },
+    "quintar": { "label": "Quintar" }
+  },
   "milestones": [
     {
       "id": "zenith-imaging",
@@ -2117,20 +2149,6 @@ li { margin: 6px 0; }
       ],
       "prompt": "AC&E is on the authoring lane as timeline, scheduling, and network-operations UI, which matches the unlisted timeline and the portfolio. A dashed twin on the control lane asks whether that software also drove external telecom gear, or whether it was a control-room UI only.",
       "datedNote": "Portfolio AC&E: April 1993 – May 1995."
-    },
-    {
-      "id": "q-shared-session",
-      "priority": 14,
-      "ask": "One shared-session concept, or two?",
-      "refs": [
-        "magic-leap-devices",
-        "niantic-shared",
-        "magic-leap-tools",
-        "niantic-sdk",
-        "quintar-share"
-      ],
-      "prompt": "On the multidevice lane, Magic Leap is several headsets in one spatial session, with phones and computers streaming graphics into the glasses. Niantic, which starts as that span ends, is the shared-session piece of a developer kit so more than one person can occupy an augmented-reality session. Are those one continuing capability told as two employer segments, or two different concepts that should stay apart? The authoring twins are different on the evidence: Magic Leap is sharing frameworks other people build multi-headset apps with, and Niantic is meshing, depth, semantics, and visual positioning. Quintar later is more than one person viewing a live spatial sports scene. This draft does not merge any of them.",
-      "datedNote": "Portfolio Magic Leap: November 2017 – November 2020. Portfolio Niantic: November 2020 – August 2022. Quintar shared viewing starts September 2022. No gap is drawn between Magic Leap and Niantic. They are not the same company or the same product."
     }
   ],
   "backlog": [
@@ -2190,6 +2208,10 @@ li { margin: 6px 0; }
   "revisions": [
     {
       "label": "Draft assembled from the portfolio experience file, project list, and device cards; the unlisted interaction timeline; the automotive UI patent listing; and notes from Richard this turn. Year numbers default to hidden.",
+      "whenLabel": "8 November 2026"
+    },
+    {
+      "label": "Richard kept Magic Leap and Niantic as separate concepts. Those bars stay apart. No other bars were joined.",
       "whenLabel": "8 November 2026"
     }
   ],
@@ -2636,11 +2658,26 @@ globalThis.StoryAPI = (function () {
     return { title: m ? m.short : "", subtitle: "" };
   }
 
-  function barBox(width, title, subtitle, when, hasMark) {
-    var box = { showText: false, titleLines: 0, subLines: 0, showWhen: false, height: 22 };
-    if (!(width >= 72)) return box;
+  function brandFor(data, employerId) {
+    var brand = data.brands && employerId && data.brands[employerId];
+    if (!brand || !brand.label) return null;
+    return { label: brand.label, full: brand.full || brand.label, logo: brand.logo || "" };
+  }
+
+  function barBox(width, title, subtitle, when, hasMark, hasBrand) {
+    var box = { showText: false, titleLines: 0, subLines: 0, showWhen: false, showBrand: false, height: 22 };
+    var wideEnough = width >= 176;
+    if (hasBrand && wideEnough) box.showBrand = true;
+    if (!(width >= 72)) {
+      if (hasBrand && width >= 88) {
+        box.showBrand = true;
+        box.height = 36;
+      }
+      return box;
+    }
     box.showText = true;
-    var inner = Math.max(16, width - 20 - (hasMark ? 54 : 0));
+    var brandCol = box.showBrand ? 84 : 0;
+    var inner = Math.max(16, width - 20 - brandCol - (hasMark ? 54 : 0));
     var per = Math.max(6, Math.floor(inner / 7.1));
     function lines(text, max) {
       if (!text || max < 1) return 0;
@@ -2699,17 +2736,19 @@ globalThis.StoryAPI = (function () {
         var when = formatSpan(item.m, state.showYears);
         var mark = markFor(item.m, trackId);
         var face = laneFace(item.m, trackId);
-        var box = barBox(width, face.title, face.subtitle, when, !!mark);
+        var brand = brandFor(data, item.m.employerId);
+        var box = barBox(width, face.title, face.subtitle, when, !!mark, !!brand);
         var selected = state.selected === item.m.id;
         var related = false;
         if (state.selected && state.selected !== item.m.id) {
           var sel = data.milestones.filter(function (x) { return x.id === state.selected; })[0];
           related = !!(sel && sel.thread === item.m.thread);
         }
-        var aria = [face.title, face.subtitle, item.m.title, trackById(data, trackId).name, mark, when].filter(Boolean).join(". ");
+        var aria = [face.title, face.subtitle, item.m.title, brand ? brand.full : "", trackById(data, trackId).name, mark, when].filter(Boolean).join(". ");
         return {
           id: item.m.id, short: item.m.short, headline: face.title, subtitle: box.subLines ? face.subtitle : "",
           fullSubtitle: face.subtitle, mark: mark, when: box.showWhen ? when : "", fullWhen: when, aria: aria,
+          brand: box.showBrand ? brand : null,
           left: left, width: width, height: box.height, row: item.row, showText: box.showText,
           titleLines: box.titleLines, subLines: box.subLines,
           selected: selected, related: related,
@@ -3030,6 +3069,19 @@ globalThis.StoryAPI = (function () {
           b.style.height = bar.height + "px";
           b.style.top = bar.top + "px";
           b.setAttribute("aria-label", bar.aria);
+          if (bar.brand) {
+            b.classList.add("has-brand");
+            var badge = el("span", "bar-brand");
+            if (bar.brand.logo) {
+              var img = el("img", "");
+              img.src = bar.brand.logo;
+              img.alt = bar.brand.full;
+              badge.appendChild(img);
+            } else {
+              badge.appendChild(el("span", "brand-name", bar.brand.label));
+            }
+            b.appendChild(badge);
+          }
           if (bar.showText) {
             var copy = el("span", "bar-copy");
             var title = el("span", "bar-title");
