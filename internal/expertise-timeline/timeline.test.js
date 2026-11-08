@@ -248,6 +248,173 @@ test('zoom scale runs from 0.2× to 200× around the 4 year default', () => {
   assert.equal(fittedQuarter.length, 0);
 });
 
+test('year labels follow the visible plot, including a year whose January is off screen', () => {
+  const span = api.axisSpanMonths(data);
+  const axisStart = 1986 * 12;
+  const axisEnd = axisStart + span;
+  function labeled(viewStart, visible, width, showYears = true) {
+    const state = api.initialState(data);
+    state.viewStart = viewStart;
+    state.visibleMonths = visible;
+    state.trackWidth = width;
+    state.showYears = showYears;
+    return api.viewModel(data, state).ticks.filter(t => t.year);
+  }
+  function expectYears(viewStart, visible, width, years) {
+    const ticks = labeled(viewStart, visible, width);
+    ticks.forEach((tick, index) => {
+      if (index === 0) return;
+      assert.ok(tick.label >= ticks[index - 1].label + api.YEAR_LABEL_PX - 0.01);
+    });
+    ticks.forEach(tick => {
+      assert.ok(tick.label >= 2);
+      assert.ok(tick.label + api.YEAR_LABEL_PX <= width - 1, tick.year + ' falls off a ' + width + 'px plot');
+    });
+    assert.equal(ticks.map(t => String(t.year)).join(','), years.join(','));
+    return ticks;
+  }
+
+  assert.ok(!data.axis.ticks.includes('2023'));
+  assert.ok(!data.axis.ticks.includes('2024'));
+  assert.ok(!data.axis.ticks.includes('2025'));
+  expectYears(axisEnd - 48, 48, 1250, ['2023', '2024', '2025', '2026']);
+  expectYears(axisEnd - 48, 48, 252, ['2023', '2024', '2025', '2026']);
+  expectYears(axisStart, 48, 1250, ['1986', '1987', '1988', '1989']);
+
+  const mid = expectYears(2000 * 12 + 6, 48, 1100, ['2000', '2001', '2002', '2003', '2004']);
+  assert.equal(mid[0].context, true);
+  assert.equal(mid[0].left, null);
+  assert.equal(typeof mid[1].left, 'number');
+
+  const sliver = expectYears(1995 * 12 + 6, 48, 252, ['1995', '1996', '1997', '1998', '1999']);
+  assert.equal(sliver[0].context, true);
+
+  // Published behavior named a year only when its January was in data.axis.ticks.
+  // March 2018–March 2022 holds about four years of quarters and only January 2022 from that list.
+  const before2022 = 2018 * 12 + 2;
+  const listed = data.axis.ticks.filter(year => {
+    const january = Number(year) * 12;
+    return january >= before2022 - 0.2 && january <= before2022 + 48 + 0.2;
+  });
+  assert.deepEqual(listed, ['2022']);
+  const scrolled = expectYears(before2022, 48, 1250, ['2018', '2019', '2020', '2021', '2022']);
+  assert.equal(scrolled[0].context, true);
+  assert.equal(scrolled[0].left, null);
+  assert.equal(typeof scrolled.find(tick => String(tick.year) === '2022').left, 'number');
+  const scrolledQuarters = api.viewModel(data, Object.assign(api.initialState(data), {
+    viewStart: before2022, visibleMonths: 48, trackWidth: 1250, showYears: true
+  })).quarters;
+  assert.ok(scrolledQuarters.length >= 12);
+
+  const fitted = expectYears(axisStart, span, 1200, labeled(axisStart, span, 1200).map(t => t.year));
+  assert.ok(fitted.length > data.axis.ticks.length);
+  assert.ok(fitted.length < 2026 - 1986 + 1);
+  assert.equal(fitted[0].year, '1986');
+  assert.ok(fitted.some(t => t.year === '2026'));
+  assert.ok(!fitted.map(t => t.year).includes('1987'));
+  const fittedPhone = labeled(axisStart, span, 280);
+  assert.ok(fittedPhone.length >= 2 && fittedPhone.length < fitted.length);
+  assert.equal(fittedPhone[0].year, '1986');
+  assert.ok(!fittedPhone.some(t => t.year === '1987'));
+
+  const zoomed = expectYears(axisEnd - 0.24, 0.24, 1250, ['2026']);
+  assert.equal(zoomed[0].context, true);
+  assert.equal(zoomed[0].left, null);
+
+  const hidden = labeled(axisEnd - 48, 48, 1250, false);
+  assert.equal(hidden.length, 0);
+  const off = api.initialState(data);
+  off.viewStart = axisEnd - 48;
+  off.visibleMonths = 48;
+  off.trackWidth = 1250;
+  off.showYears = false;
+  const model = api.viewModel(data, off);
+  assert.ok(model.ticks.length >= 4);
+  assert.ok(model.ticks.every(t => t.year === ''));
+  assert.equal(model.quarters.length, 0);
+  assert.doesNotMatch(api.flatten(model).join('\n'), api.YEAR_RE);
+  const onQuarters = api.viewModel(data, Object.assign(api.initialState(data), {
+    viewStart: axisEnd - 48, visibleMonths: 48, trackWidth: 1250, showYears: true
+  })).quarters.map(q => q.label);
+  assert.ok(onQuarters.includes('Q1') && onQuarters.includes('Q4'));
+});
+
+test('each block titles the work that belongs on its lane', () => {
+  const nicknames = /^(Sports|Viewing|Fan agent|Sessions|Frameworks)$/;
+  for (const milestone of data.milestones) {
+    assert.ok(milestone.laneCopy, milestone.id);
+    const titles = [];
+    for (const track of milestone.tracks) {
+      const face = milestone.laneCopy[track];
+      assert.ok(face && face.title.length >= 24, milestone.id + ' ' + track);
+      assert.ok(face.subtitle && face.subtitle.length >= 12, milestone.id + ' ' + track);
+      assert.doesNotMatch(face.title + ' ' + face.subtitle, api.YEAR_RE, milestone.id);
+      assert.doesNotMatch(face.title + ' ' + face.subtitle, /local\s*(?:&|and)\s*remot/i, milestone.id);
+      assert.doesNotMatch(face.title, nicknames, milestone.id);
+      titles.push(face.title);
+    }
+    assert.equal(new Set(titles).size, titles.length, milestone.id);
+  }
+  const span = api.axisSpanMonths(data);
+  const axisEnd = 1986 * 12 + span;
+  const state = api.initialState(data);
+  state.viewStart = axisEnd - 48;
+  state.visibleMonths = 48;
+  state.trackWidth = 1250;
+  const bars = api.viewModel(data, state).lanes.flatMap(lane => lane.bars);
+  const byId = Object.fromEntries(bars.map(bar => [bar.id, bar]));
+  assert.equal(bars.length, 3);
+  for (const id of ['quintar-renderer', 'quintar-share', 'quintar-agent']) {
+    assert.ok(byId[id].showText, id);
+    assert.doesNotMatch(byId[id].headline, nicknames);
+    assert.ok(byId[id].subtitle);
+    assert.ok(byId[id].when);
+    assert.ok(byId[id].height >= byId[id].titleLines * 16 + 15);
+    assert.match(byId[id].aria, new RegExp(byId[id].headline.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.equal(new Set(['quintar-renderer', 'quintar-share', 'quintar-agent'].map(id => byId[id].headline)).size, 3);
+  const share = data.milestones.find(m => m.id === 'quintar-share');
+  const pop = api.popoutLines(data, share, true).join('\n');
+  assert.match(pop, /Simultaneous multiuser sports viewing/);
+  assert.match(pop, /Quintar/);
+  assert.match(pop, new RegExp(share.laneCopy.multidevice.title));
+  assert.match(pop, /September 2022/);
+  assert.doesNotMatch(api.popoutLines(data, share, false).join('\n'), api.YEAR_RE);
+  const sessions = data.milestones.find(m => m.id === 'magic-leap-devices');
+  const shared = data.milestones.find(m => m.id === 'niantic-shared');
+  assert.notEqual(sessions.laneCopy.multidevice.title, shared.laneCopy.multidevice.title);
+  assert.doesNotMatch(sessions.laneCopy.multidevice.title, /^(Sessions|Shared AR)$/);
+  assert.doesNotMatch(shared.laneCopy.multidevice.title, /^(Sessions|Shared AR)$/);
+  assert.equal(sessions.org === shared.org, false);
+  assert.ok(data.questions.some(q => q.id === 'q-shared-session' && q.refs.includes('magic-leap-devices') && q.refs.includes('niantic-shared')));
+  assert.doesNotMatch(html, /b\.title\s*=\s*bar\.aria/);
+  const limb = data.milestones.find(m => m.id === 'prosthetic');
+  assert.notEqual(limb.laneCopy.compute.title, limb.laneCopy.control.title);
+  assert.match(api.popoutLines(data, limb, true).join('\n'), /10 mW/);
+
+  const narrow = api.initialState(data);
+  narrow.viewStart = 1990 * 12 + 3;
+  narrow.visibleMonths = 48;
+  narrow.trackWidth = 220;
+  const hughes = api.viewModel(data, narrow).lanes.flatMap(lane => lane.bars).find(bar => bar.id === 'hughes-videodisc');
+  assert.ok(hughes);
+  assert.equal(hughes.showText, false);
+  assert.match(hughes.aria, /videodisc/);
+  assert.ok(hughes.height < 30);
+
+  const wide = api.initialState(data);
+  wide.viewStart = 1990 * 12;
+  wide.visibleMonths = 48;
+  wide.trackWidth = 900;
+  const shown = api.viewModel(data, wide).lanes.flatMap(lane => lane.bars).find(bar => bar.id === 'hughes-videodisc');
+  assert.equal(shown.showText, true);
+  assert.ok(shown.titleLines >= 1 && shown.subLines >= 1);
+  assert.ok(shown.height > 52);
+  const offAxis = api.viewModel(data, state).undated.find(card => card.id === 'agentic-authoring');
+  assert.match(offAxis.title, /intent/);
+  assert.doesNotMatch(offAxis.title, /Agentic authoring pipelines/);
+});
+
 test('the page is an unlisted internal draft and is not in the public catalog', () => {
   assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
   assert.match(html, /Internal working draft/);
