@@ -58,14 +58,14 @@ test('each lane has at least one milestone', () => {
   assert.ok([...threads.values()].some(set => set.size >= 2));
 });
 
-test('year numbers default on, and the 2.5 year window can hide them again', () => {
+test('year numbers default on, and the 4 year window can hide them again', () => {
   const state = api.initialState(data);
   assert.equal(state.showYears, true);
   assert.equal(state.fitted, false);
   assert.equal(state.scale, 1);
-  assert.equal(state.windowMonths, 30);
-  assert.equal(api.WINDOW_MONTHS, 30);
-  assert.equal(api.scaleReadout(1, 30, false), '2.5 years · 1×');
+  assert.equal(state.windowMonths, 48);
+  assert.equal(api.WINDOW_MONTHS, 48);
+  assert.equal(api.scaleReadout(1, 48, false), '4 years · 1×');
   const shownDefault = api.flatten(api.viewModel(data, state)).join('\n');
   assert.match(shownDefault, /Year numbers are shown/);
   assert.match(shownDefault, /\b1986\b/);
@@ -73,10 +73,10 @@ test('year numbers default on, and the 2.5 year window can hide them again', () 
 
   const span = api.axisSpanMonths(data);
   const view = 720;
-  const width = api.trackWidthForMonths(data, view, 30);
-  assert.ok(Math.abs(api.monthsInView(data, width, view) - 30) < 0.05);
+  const width = api.trackWidthForMonths(data, view, 48);
+  assert.ok(Math.abs(api.monthsInView(data, width, view) - 48) < 0.05);
   const atEnd = width - view;
-  assert.ok(atEnd > view, '2.5 years is wider than the viewport so history can scroll');
+  assert.ok(atEnd > view, '4 years is wider than the viewport so history can scroll');
   const rightFrac = (atEnd + view) / width;
   assert.ok(Math.abs(rightFrac - 1) < 0.001);
 
@@ -140,6 +140,8 @@ test('the timeline and its controls come before the questions', () => {
   const detailAt = html.indexOf('id="detail"');
   assert.ok(timelineAt < detailAt && detailAt < questionsAt);
   assert.ok(questionsAt < introAt);
+  assert.match(html, /id="label-col"/);
+  assert.match(html, /id="plot"/);
   assert.match(html, /class="sheet"/);
   assert.match(html, /class="prose"/);
   assert.doesNotMatch(html, /max-width:\s*1180px/);
@@ -156,7 +158,7 @@ test('the timeline and its controls come before the questions', () => {
 test('quarter labels sit in each calendar quarter and hide when the scale is tight', () => {
   const span = api.axisSpanMonths(data);
   const axisStart = 1986 * 12;
-  const wide = api.trackWidthForMonths(data, 900, 30);
+  const wide = api.trackWidthForMonths(data, 1200, 48);
   const marks = api.quarterMarks(data, wide, true).filter(m => m.label);
   assert.ok(marks.length > 4);
   ['Q1', 'Q2', 'Q3', 'Q4'].forEach(label => {
@@ -192,41 +194,55 @@ test('quarter labels sit in each calendar quarter and hide when the scale is tig
   assert.ok(labels.includes('Q1') && labels.includes('Q4'));
 });
 
-test('zoom scale runs from 0.2× to 200× around the 2.5 year default', () => {
+test('zoom scale runs from 0.2× to 200× around the 4 year default', () => {
   assert.equal(api.SCALE_MIN, 0.2);
   assert.equal(api.SCALE_MAX, 200);
-  assert.equal(api.visibleMonthsForScale(1), 30);
-  assert.ok(Math.abs(api.visibleMonthsForScale(0.2) - 150) < 1e-9);
-  assert.ok(Math.abs(api.visibleMonthsForScale(200) - 30 / 200) < 1e-9);
+  assert.equal(api.visibleMonthsForScale(1), 48);
+  assert.ok(Math.abs(api.visibleMonthsForScale(0.2) - 240) < 1e-9);
+  assert.ok(Math.abs(api.visibleMonthsForScale(200) - 48 / 200) < 1e-9);
   assert.equal(api.clampScale(0.01), 0.2);
   assert.equal(api.clampScale(900), 200);
   assert.equal(api.clampScale(1), 1);
   const span = api.axisSpanMonths(data);
-  const fitScale = 30 / span;
+  const fitScale = 48 / span;
   assert.ok(fitScale < 0.2);
   assert.equal(api.scaleReadout(fitScale, span, true), 'Full span · Fit');
-  assert.doesNotMatch(api.scaleReadout(200, 30 / 200, false), api.YEAR_RE);
-  assert.doesNotMatch(api.scaleReadout(0.2, 150, false), api.YEAR_RE);
+  assert.equal(api.scaleReadout(1, 48, false), '4 years · 1×');
+  assert.doesNotMatch(api.scaleReadout(200, 48 / 200, false), api.YEAR_RE);
+  assert.doesNotMatch(api.scaleReadout(0.2, 240, false), api.YEAR_RE);
+  assert.equal(api.PINCH_COMPRESS_POWER, 3);
+  assert.ok(Math.abs(api.pinchScale(1, 0.8) - Math.pow(0.8, 3)) < 1e-12);
+  assert.equal(api.pinchScale(1, 0.5), 0.2);
+  assert.ok(Math.abs(api.pinchScale(4, 0.5) - 4 * Math.pow(0.5, 3)) < 1e-12);
+  assert.ok(Math.abs(api.pinchScale(1, 2) - 2) < 1e-12);
+  assert.equal(api.pinchScale(1, 1), 1);
+  assert.equal(api.pinchScale(1, 0.01), 0.2);
+  assert.equal(api.pinchScale(150, 2), 200);
+  const compressed = api.pinchScale(1, api.wheelRatio(80));
+  const split = api.pinchScale(1, api.wheelRatio(30 + 50));
+  assert.ok(Math.abs(compressed - split) < 1e-12);
+  const after = api.pinchScale(1, 0.8);
+  assert.ok(Math.abs(api.pinchScale(after, 0.8) - after * Math.pow(0.8, 3)) < 1e-12);
 
   const axisStart = 1986 * 12;
   const axisEnd = axisStart + span;
-  const viewStart = axisEnd - 30;
+  const viewStart = axisEnd - 48;
   const pointerFrac = 0.25;
-  const focal = viewStart + pointerFrac * 30;
-  const nextVisible = 30 / 200;
-  const nextStart = api.zoomViewStart(viewStart, 30, nextVisible, pointerFrac, axisStart, axisEnd);
+  const focal = viewStart + pointerFrac * 48;
+  const nextVisible = 48 / 200;
+  const nextStart = api.zoomViewStart(viewStart, 48, nextVisible, pointerFrac, axisStart, axisEnd);
   assert.ok(Math.abs((nextStart + pointerFrac * nextVisible) - focal) < 1e-6);
   assert.ok(nextStart >= axisStart && nextStart + nextVisible <= axisEnd + 1e-6);
 
-  const widened = api.zoomViewStart(axisEnd - 4, 4, 150, 0.9, axisStart, axisEnd);
-  assert.equal(widened, axisEnd - 150);
-  const atLeft = api.zoomViewStart(axisStart + 1, 8, 150, 0.1, axisStart, axisEnd);
+  const widened = api.zoomViewStart(axisEnd - 4, 4, 240, 0.9, axisStart, axisEnd);
+  assert.equal(widened, axisEnd - 240);
+  const atLeft = api.zoomViewStart(axisStart + 1, 8, 240, 0.1, axisStart, axisEnd);
   assert.equal(atLeft, axisStart);
 
-  const capped = api.layoutWidth(1200, 30 / 200, span);
+  const capped = api.layoutWidth(1200, 48 / 200, span);
   assert.ok(capped <= api.MAX_LAYOUT_PX);
-  assert.ok(capped < 1200 * span / (30 / 200));
-  const quarterPx = 1200 * 3 / (30 / 200);
+  assert.ok(capped < 1200 * span / (48 / 200));
+  const quarterPx = 1200 * 3 / (48 / 200);
   assert.ok(quarterPx > api.QUARTER_MIN_PX);
   const fittedQuarter = api.quarterMarks(data, 1400, true).filter(m => m.label);
   assert.equal(fittedQuarter.length, 0);
