@@ -386,7 +386,8 @@ test('each block titles the work that belongs on its lane', () => {
   assert.doesNotMatch(sessions.laneCopy.multidevice.title, /^(Sessions|Shared AR)$/);
   assert.doesNotMatch(shared.laneCopy.multidevice.title, /^(Sessions|Shared AR)$/);
   assert.equal(sessions.org === shared.org, false);
-  assert.ok(data.questions.some(q => q.id === 'q-shared-session' && q.refs.includes('magic-leap-devices') && q.refs.includes('niantic-shared')));
+  assert.equal(data.questions.some(q => q.id === 'q-shared-session'), false);
+  assert.match(data.revisions.map(r => r.label).join('\n'), /kept Magic Leap and Niantic as separate concepts/);
   assert.doesNotMatch(html, /b\.title\s*=\s*bar\.aria/);
   const limb = data.milestones.find(m => m.id === 'prosthetic');
   assert.notEqual(limb.laneCopy.compute.title, limb.laneCopy.control.title);
@@ -413,6 +414,61 @@ test('each block titles the work that belongs on its lane', () => {
   const offAxis = api.viewModel(data, state).undated.find(card => card.id === 'agentic-authoring');
   assert.match(offAxis.title, /intent/);
   assert.doesNotMatch(offAxis.title, /Agentic authoring pipelines/);
+});
+
+test('each employer has a sourced mark or a plain name, never a made-up logo', () => {
+  const provenance = JSON.parse(fs.readFileSync(path.join(__dirname, 'brands/provenance.json'), 'utf8'));
+  const employers = new Set(data.employers.map(e => e.id));
+  assert.deepEqual(new Set(Object.keys(data.brands)), employers);
+  for (const milestone of data.milestones) {
+    if (milestone.placement !== 'axis') continue;
+    assert.ok(data.brands[milestone.employerId], milestone.id);
+  }
+  for (const [id, brand] of Object.entries(data.brands)) {
+    assert.ok(brand.label && !api.YEAR_RE.test(brand.label), id);
+    if (!brand.logo) {
+      assert.ok(provenance.namesOnly[id], id + ' needs a written reason for the plain name');
+      continue;
+    }
+    assert.equal(brand.logo.includes('..'), false);
+    const file = path.join(__dirname, brand.logo);
+    assert.equal(fs.existsSync(file), true, brand.logo);
+    const svg = fs.readFileSync(file, 'utf8');
+    assert.doesNotMatch(svg, /<script/i);
+    const record = provenance[path.basename(brand.logo)];
+    assert.ok(record && record.source.startsWith('https://commons.wikimedia.org/'), brand.logo);
+  }
+  assert.equal(data.brands.ms1.logo, data.brands.ms2.logo);
+  assert.match(data.brands.ms1.logo, /microsoft-wordmark\.svg$/);
+  assert.match(data.brands.amazon.logo, /amazon-wordmark\.svg$/);
+  for (const id of ['magic-leap', 'niantic', 'hughes', 'daqri', 'quintar', 'zenith']) {
+    assert.equal(data.brands[id].logo || '', '');
+  }
+  const span = api.axisSpanMonths(data);
+  const axisEnd = 1986 * 12 + span;
+  const state = api.initialState(data);
+  state.viewStart = axisEnd - 48;
+  state.visibleMonths = 48;
+  state.trackWidth = 1250;
+  const bars = api.viewModel(data, state).lanes.flatMap(lane => lane.bars);
+  for (const bar of bars) {
+    assert.equal(bar.brand.label, 'Quintar');
+    assert.equal(bar.brand.logo || '', '');
+    assert.ok(bar.headline.length > bar.brand.label.length);
+  }
+  const early = api.initialState(data);
+  early.viewStart = 2007 * 12;
+  early.visibleMonths = 48;
+  early.trackWidth = 1250;
+  const amazon = api.viewModel(data, early).lanes.flatMap(lane => lane.bars).find(bar => bar.id === 'kindle-api');
+  assert.equal(amazon.brand.logo, 'brands/amazon-wordmark.svg');
+  const narrow = api.initialState(data);
+  narrow.viewStart = 1990 * 12 + 3;
+  narrow.visibleMonths = 48;
+  narrow.trackWidth = 220;
+  const hughes = api.viewModel(data, narrow).lanes.flatMap(lane => lane.bars).find(bar => bar.id === 'hughes-videodisc');
+  assert.equal(hughes.brand, null);
+  assert.equal(hughes.showText, false);
 });
 
 test('the page is an unlisted internal draft and is not in the public catalog', () => {
