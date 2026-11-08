@@ -58,40 +58,74 @@ test('each lane has at least one milestone', () => {
   assert.ok([...threads.values()].some(set => set.size >= 2));
 });
 
-test('year numbers are hidden by default and shown only when asked', () => {
-  const hidden = api.initialState(data);
-  assert.equal(hidden.showYears, false);
-  const hiddenText = api.flatten(api.viewModel(data, hidden)).join('\n');
+test('year numbers default on, and an 18-month window can hide them again', () => {
+  const state = api.initialState(data);
+  assert.equal(state.showYears, true);
+  assert.equal(state.fitted, false);
+  assert.equal(state.windowMonths, 18);
+  assert.equal(api.WINDOW_MONTHS, 18);
+  const shownDefault = api.flatten(api.viewModel(data, state)).join('\n');
+  assert.match(shownDefault, /Year numbers are shown/);
+  assert.match(shownDefault, /\b1986\b/);
+  assert.match(shownDefault, /Open questions/);
+
+  const span = api.axisSpanMonths(data);
+  const view = 720;
+  const width = api.trackWidthForMonths(data, view, 18);
+  assert.ok(Math.abs(api.monthsInView(data, width, view) - 18) < 0.05);
+  const atEnd = width - view;
+  assert.ok(atEnd > view, '18 months is wider than the viewport so history can scroll');
+  const rightFrac = (atEnd + view) / width;
+  assert.ok(Math.abs(rightFrac - 1) < 0.001);
+
+  const oldWidth = 4000;
+  const scrollLeft = 2500;
+  const pointer = 120;
+  const frac = (scrollLeft + pointer) / oldWidth;
+  const nextWidth = oldWidth * 1.4;
+  const nextScroll = api.zoomScroll(oldWidth, nextWidth, scrollLeft, pointer);
+  assert.ok(Math.abs((nextScroll + pointer) / nextWidth - frac) < 1e-9);
+
+  state.showYears = false;
+  const hiddenText = api.flatten(api.viewModel(data, state)).join('\n');
   assert.doesNotMatch(hiddenText, api.YEAR_RE);
   assert.match(hiddenText, /Year numbers are hidden/);
   assert.match(hiddenText, /Heterogeneous compute/);
-  assert.match(hiddenText, /Multidevice UX/);
-  assert.match(hiddenText, /Multimodal authoring/);
-  assert.match(hiddenText, /External-device control/);
-  assert.match(hiddenText, /Open questions/);
 
   for (const milestone of data.milestones) {
     assert.equal(api.formatSpan(milestone, false), '');
-    const state = api.initialState(data);
-    state.selected = milestone.id;
-    const detail = api.viewModel(data, state).detail.join('\n');
-    assert.doesNotMatch(detail, api.YEAR_RE, milestone.id);
-    state.showYears = true;
-    const shown = api.viewModel(data, state).detail.join('\n');
-    if (milestone.placement === 'undated') assert.doesNotMatch(shown, api.YEAR_RE, milestone.id);
-    else assert.match(shown, api.YEAR_RE, milestone.id);
+    const off = api.initialState(data);
+    off.showYears = false;
+    off.selected = milestone.id;
+    assert.doesNotMatch(api.viewModel(data, off).detail.join('\n'), api.YEAR_RE, milestone.id);
+    assert.doesNotMatch(api.popoutLines(data, milestone, false).join('\n'), api.YEAR_RE, milestone.id);
+    const popOn = api.popoutLines(data, milestone, true).join('\n');
+    assert.match(popOn, new RegExp(milestone.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    if (milestone.summary) assert.match(popOn, /.{12,}/);
+    if (milestone.placement === 'undated') assert.doesNotMatch(popOn, api.YEAR_RE, milestone.id);
+    else assert.match(popOn, api.YEAR_RE, milestone.id);
+    const on = api.initialState(data);
+    on.selected = milestone.id;
+    const detail = api.viewModel(data, on).detail.join('\n');
+    if (milestone.placement === 'undated') assert.doesNotMatch(detail, api.YEAR_RE, milestone.id);
+    else assert.match(detail, api.YEAR_RE, milestone.id);
   }
 
+  const prosthetic = api.popoutLines(data, data.milestones.find(m => m.id === 'prosthetic'), true).join('\n');
+  assert.match(prosthetic, /1991/);
+  assert.match(prosthetic, /New Resolutions/);
+  assert.match(prosthetic, /10 mW/);
+  assert.doesNotMatch(prosthetic, /Vice President|Senior Software|Principal Consultant/);
+
   const on = api.initialState(data);
-  on.showYears = true;
   on.selected = 'prosthetic';
   const onText = api.flatten(api.viewModel(data, on)).join('\n');
-  assert.match(onText, /Year numbers are shown/);
-  assert.match(onText, /\b1991\b/);
   assert.match(onText, /\b2007\b/);
   assert.match(onText, /Amazon\.com/);
   assert.match(onText, /1989/);
   assert.doesNotMatch(onText, /Vice President|Senior Software|Principal Consultant|@/);
+  assert.match(html, /id="toggle-years" aria-pressed="true"/);
+  assert.doesNotMatch(html, /user-scalable\s*=\s*no/);
 });
 
 test('the timeline and its controls come before the questions', () => {

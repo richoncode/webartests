@@ -163,7 +163,18 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .board-scroll {
   overflow-x: auto; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--paper);
   -webkit-overflow-scrolling: touch;
+  /* Pan with one finger. Pinch on this board is handled in script. The rest of the page keeps browser zoom. */
+  touch-action: pan-x pan-y;
 }
+.popout {
+  position: fixed; z-index: 40; max-height: min(320px, 46vh); overflow: auto;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.popout[hidden] { display: none; }
+.popout h3 { margin: 0 0 6px; font-size: 1.02rem; }
+.popout p { margin: 0 0 6px; font-size: 0.9rem; }
+.bar-copy { display: block; max-width: calc(100% - 8px); }
 .axis-row, .lane { display: grid; grid-template-columns: var(--label-w) max-content; }
 .sticky-label, .axis-spacer {
   position: sticky; left: 0; z-index: 6; background: var(--label-bg); color: var(--ink);
@@ -235,8 +246,8 @@ li { margin: 6px 0; }
     <p class="banner" id="banner">Internal working draft. Unlisted: not linked from the public Web Tests home or the experiment catalog. The repository is public, so this page is not access-controlled. Anyone with the link, or who guesses the path, can open it. Search engines are asked not to index it.</p>
   </header>
   <div class="toolbar" role="toolbar" aria-label="Timeline controls">
-    <button type="button" id="toggle-years" aria-pressed="false">Year numbers</button>
-    <span class="year-status" id="year-status">Year numbers are hidden.</span>
+    <button type="button" id="toggle-years" aria-pressed="true">Year numbers</button>
+    <span class="year-status" id="year-status">Year numbers are shown.</span>
     <button type="button" id="fit">Fit</button>
     <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
     <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
@@ -264,6 +275,7 @@ li { margin: 6px 0; }
       <p>Select a bar or an off-axis card. Evidence, guesses, and any shared story thread show up here.</p>
     </aside>
   </div>
+  <div id="popout" class="popout" role="tooltip" hidden></div>
   <section id="questions"></section>
   <section class="about" id="about">
     <h2>How to read this</h2>
@@ -1961,10 +1973,49 @@ globalThis.StoryAPI = (function () {
     return "";
   }
 
+  var WINDOW_MONTHS = 18;
+
+  function axisSpanMonths(data) {
+    return monthNum(data.axis.end, "end") - monthNum(data.axis.start, "start");
+  }
+
+  function trackWidthForMonths(data, viewportPx, months) {
+    var span = axisSpanMonths(data);
+    var windowMonths = Math.max(1, Math.min(span, months));
+    return viewportPx * (span / windowMonths);
+  }
+
+  function monthsInView(data, trackWidth, viewportPx) {
+    if (!trackWidth) return axisSpanMonths(data);
+    return axisSpanMonths(data) * (viewportPx / trackWidth);
+  }
+
+  function zoomScroll(oldWidth, newWidth, scrollLeft, pointerInTrack) {
+    var frac = (scrollLeft + pointerInTrack) / oldWidth;
+    return frac * newWidth - pointerInTrack;
+  }
+
+  function popoutLines(data, m, showYears) {
+    var lines = [];
+    if (!m) return lines;
+    lines.push(m.title);
+    var when = formatSpan(m, showYears);
+    if (when) lines.push(when);
+    if (m.org) lines.push("Context: " + m.org);
+    lines.push(m.tracks.map(function (id) { return trackById(data, id).name; }).join(" · "));
+    if (m.summary) lines.push(m.summary);
+    (m.detail || []).forEach(function (p) { lines.push(p); });
+    (m.caveats || []).forEach(function (p) { lines.push("Caveat: " + p); });
+    var mark = markFor(m, m.tracks[0]);
+    if (mark) lines.push(mark);
+    (m.sources || []).forEach(function (s) { lines.push("Source: " + s); });
+    return lines;
+  }
+
   function initialState(data) {
     var enabled = {};
     data.tracks.forEach(function (t) { enabled[t.id] = true; });
-    return { showYears: false, selected: null, fitted: true, trackWidth: 960, enabled: enabled };
+    return { showYears: true, selected: null, fitted: false, windowMonths: WINDOW_MONTHS, trackWidth: 960, enabled: enabled };
   }
 
   function audit(data) {
@@ -2383,9 +2434,11 @@ globalThis.StoryAPI = (function () {
           b.setAttribute("aria-label", bar.aria);
           b.title = bar.aria;
           if (bar.showText) {
-            b.appendChild(el("strong", "", bar.short));
-            if (bar.mark) b.appendChild(el("span", "mark", bar.mark));
-            if (bar.when) b.appendChild(el("span", "when", bar.when));
+            var copy = el("span", "bar-copy");
+            copy.appendChild(el("strong", "", bar.short));
+            if (bar.mark) copy.appendChild(el("span", "mark", bar.mark));
+            if (bar.when) copy.appendChild(el("span", "when", bar.when));
+            b.appendChild(copy);
           }
           track.appendChild(b);
         });
@@ -2463,25 +2516,162 @@ globalThis.StoryAPI = (function () {
         anchors.appendChild(al);
       }
       if (scroller) scroller.scrollLeft = keep;
+      pinLabels();
+      if (state.popId) {
+        var popAnchor = root.querySelector("[data-mid=\"" + state.popId + "\"]");
+        if (popAnchor) showPop(state.popId, popAnchor);
+        else hidePop();
+      }
+    }
+
+    function labelWidth() {
+      return parseFloat(getComputedStyle(root.documentElement).getPropertyValue("--label-w")) || 132;
+    }
+
+    function viewportTrackWidth(scroller) {
+      var width = scroller.clientWidth - labelWidth() - 18;
+      if (width >= 120) return width;
+      return Math.max(160, root.defaultView.innerWidth - labelWidth() - 36);
+    }
+
+    function pinLabels() {
+      var scroller = root.getElementById("board-scroll");
+      if (!scroller) return;
+      var viewLeft = scroller.scrollLeft + labelWidth();
+      Array.prototype.forEach.call(scroller.querySelectorAll(".bar"), function (bar) {
+        var copy = bar.querySelector(".bar-copy");
+        if (!copy) return;
+        var left = labelWidth() + (parseFloat(bar.style.left) || 0);
+        var width = parseFloat(bar.style.width) || 0;
+        var shift = viewLeft + 8 - left;
+        var maxShift = Math.max(0, width - 72);
+        if (shift < 0) shift = 0;
+        if (shift > maxShift) shift = maxShift;
+        copy.style.transform = shift ? "translateX(" + Math.round(shift) + "px)" : "";
+      });
+    }
+
+    function hidePop() {
+      state.popId = null;
+      var pop = root.getElementById("popout");
+      if (!pop) return;
+      pop.hidden = true;
+      pop.textContent = "";
+    }
+
+    function showPop(id, anchor) {
+      var milestone = null;
+      for (var i = 0; i < data.milestones.length; i++) {
+        if (data.milestones[i].id === id) milestone = data.milestones[i];
+      }
+      var pop = root.getElementById("popout");
+      if (!milestone || !pop || !anchor) return;
+      state.popId = id;
+      pop.hidden = false;
+      pop.textContent = "";
+      popoutLines(data, milestone, state.showYears).forEach(function (line, index) {
+        pop.appendChild(el(index === 0 ? "h3" : "p", "", line));
+      });
+      anchor.setAttribute("aria-describedby", "popout");
+      var rect = anchor.getBoundingClientRect();
+      var margin = 8;
+      var width = Math.min(360, root.defaultView.innerWidth - 16);
+      pop.style.width = width + "px";
+      var left = rect.left;
+      if (left + width > root.defaultView.innerWidth - 8) left = root.defaultView.innerWidth - width - 8;
+      if (left < 8) left = 8;
+      pop.style.left = left + "px";
+      var top = rect.bottom + margin;
+      pop.style.top = top + "px";
+      var height = pop.offsetHeight;
+      if (top + height > root.defaultView.innerHeight - 8) {
+        pop.style.top = Math.max(8, rect.top - height - margin) + "px";
+      }
+    }
+
+    function scrollToFraction(frac, align) {
+      var scroller = root.getElementById("board-scroll");
+      var view = viewportTrackWidth(scroller);
+      var x = frac * state.trackWidth;
+      var left = align === "center" ? x - view / 2 : x - view;
+      var maxLeft = Math.max(0, state.trackWidth - view);
+      scroller.scrollLeft = Math.max(0, Math.min(left, maxLeft));
+    }
+
+    function applyWidth(width, scrollLeft) {
+      var scroller = root.getElementById("board-scroll");
+      state.trackWidth = width;
+      render();
+      var maxLeft = Math.max(0, state.trackWidth - viewportTrackWidth(scroller));
+      scroller.scrollLeft = Math.max(0, Math.min(scrollLeft, maxLeft));
+      pinLabels();
     }
 
     function fit() {
       var scroller = root.getElementById("board-scroll");
-      var label = parseFloat(getComputedStyle(root.documentElement).getPropertyValue("--label-w")) || 132;
-      var w = Math.max(280, scroller.clientWidth - label - 18);
+      var view = viewportTrackWidth(scroller);
       state.fitted = true;
-      if (Math.abs(w - state.trackWidth) < 2) {
-        state.trackWidth = w;
-        return;
-      }
-      state.trackWidth = w;
-      render();
+      state.windowMonths = axisSpanMonths(data);
+      applyWidth(Math.max(280, view), 0);
     }
 
-    function zoom(factor) {
+    function zoomAt(factor, clientX) {
+      var scroller = root.getElementById("board-scroll");
+      var rect = scroller.getBoundingClientRect();
+      var view = viewportTrackWidth(scroller);
+      var pointer = clientX == null ? rect.left + labelWidth() + view / 2 : clientX;
+      var pointerInTrack = pointer - rect.left - labelWidth();
+      if (pointerInTrack < 0) pointerInTrack = 0;
+      if (pointerInTrack > view) pointerInTrack = view;
+      var span = axisSpanMonths(data);
+      var nextMonths = state.windowMonths / factor;
+      nextMonths = Math.max(1, Math.min(span, nextMonths));
+      var nextWidth = trackWidthForMonths(data, view, nextMonths);
+      nextWidth = Math.max(view, Math.min(80000, nextWidth));
+      var nextScroll = zoomScroll(state.trackWidth, nextWidth, scroller.scrollLeft, pointerInTrack);
       state.fitted = false;
-      state.trackWidth = Math.max(280, Math.min(9000, Math.round(state.trackWidth * factor)));
+      state.windowMonths = monthsInView(data, nextWidth, view);
+      applyWidth(nextWidth, nextScroll);
+    }
+
+    var anchored = false;
+    function layoutDefault() {
+      var scroller = root.getElementById("board-scroll");
+      var view = viewportTrackWidth(scroller);
+      if (state.fitted) {
+        fit();
+        return;
+      }
+      var width = Math.max(view, trackWidthForMonths(data, view, state.windowMonths));
+      var keepEdge = null;
+      if (anchored && state.trackWidth > 0) {
+        keepEdge = Math.min(1, (scroller.scrollLeft + view) / state.trackWidth);
+      }
+      state.trackWidth = width;
       render();
+      if (keepEdge != null) {
+        scrollToFraction(keepEdge, "end");
+      } else {
+        var anchor = 1;
+        var align = "end";
+        if (state.selected) {
+          var chosen = null;
+          for (var i = 0; i < data.milestones.length; i++) {
+            if (data.milestones[i].id === state.selected) chosen = data.milestones[i];
+          }
+          if (chosen && chosen.placement === "axis" && chosen.start) {
+            var axis0 = monthNum(data.axis.start, "start");
+            var span = axisSpanMonths(data);
+            var endNum = chosen.current ? monthNum(data.axis.end, "end") : monthNum(chosen.end, "end");
+            var mid = (monthNum(chosen.start, "start") + endNum) / 2;
+            anchor = (mid - axis0) / span;
+            align = "center";
+          }
+        }
+        scrollToFraction(anchor, align);
+        if (scroller.clientWidth > 80) anchored = true;
+      }
+      pinLabels();
     }
 
     function select(id, opts) {
@@ -2534,7 +2724,8 @@ globalThis.StoryAPI = (function () {
 
     root.body.addEventListener("click", function (event) {
       var bar = event.target.closest("[data-mid]");
-      if (bar) { select(bar.dataset.mid); return; }
+      if (bar) { select(bar.dataset.mid); showPop(bar.dataset.mid, bar); return; }
+      if (event.target.closest && event.target.closest("#popout")) return;
       var filter = event.target.closest("[data-track]");
       if (filter) {
         state.enabled[filter.dataset.track] = !state.enabled[filter.dataset.track];
@@ -2547,8 +2738,71 @@ globalThis.StoryAPI = (function () {
     });
     root.getElementById("toggle-theme").addEventListener("click", toggleTheme);
     root.getElementById("fit").addEventListener("click", fit);
-    root.getElementById("zoom-in").addEventListener("click", function () { zoom(1.25); });
-    root.getElementById("zoom-out").addEventListener("click", function () { zoom(0.8); });
+    root.getElementById("zoom-in").addEventListener("click", function () { zoomAt(1.25, null); });
+    root.getElementById("zoom-out").addEventListener("click", function () { zoomAt(0.8, null); });
+    var board = root.getElementById("board-scroll");
+    board.addEventListener("scroll", pinLabels, { passive: true });
+    board.addEventListener("wheel", function (event) {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      var dy = event.deltaY;
+      if (event.deltaMode === 1) dy *= 16;
+      else if (event.deltaMode === 2) dy *= 400;
+      var factor = Math.exp(-dy * 0.002);
+      if (factor < 0.5) factor = 0.5;
+      if (factor > 2) factor = 2;
+      zoomAt(factor, event.clientX);
+    }, { passive: false });
+    var pinch = null;
+    function touchDistance(touches) {
+      var dx = touches[0].clientX - touches[1].clientX;
+      var dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    board.addEventListener("touchstart", function (event) {
+      if (event.touches.length === 2) {
+        pinch = { dist: touchDistance(event.touches), x: (event.touches[0].clientX + event.touches[1].clientX) / 2 };
+      }
+    }, { passive: true });
+    board.addEventListener("touchmove", function (event) {
+      if (event.touches.length !== 2 || !pinch) return;
+      event.preventDefault();
+      var dist = touchDistance(event.touches);
+      if (pinch.dist > 0 && dist > 0) {
+        var factor = dist / pinch.dist;
+        if (factor < 0.5) factor = 0.5;
+        if (factor > 2) factor = 2;
+        var x = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+        zoomAt(factor, x);
+      }
+      pinch.dist = dist;
+    }, { passive: false });
+    board.addEventListener("touchend", function (event) {
+      if (event.touches.length < 2) pinch = null;
+    });
+    board.addEventListener("touchcancel", function () { pinch = null; });
+    root.addEventListener("mouseover", function (event) {
+      var bar = event.target.closest && event.target.closest(".bar, .card-btn");
+      if (!bar || !bar.dataset.mid) return;
+      showPop(bar.dataset.mid, bar);
+    });
+    root.addEventListener("mouseout", function (event) {
+      var bar = event.target.closest && event.target.closest(".bar, .card-btn");
+      if (!bar) return;
+      var next = event.relatedTarget;
+      if (next && next.closest && (next.closest("#popout") || next.closest("[data-mid=\"" + bar.dataset.mid + "\"]"))) return;
+      if (root.activeElement && root.activeElement.dataset && root.activeElement.dataset.mid === bar.dataset.mid) return;
+      if (state.popId === bar.dataset.mid) hidePop();
+    });
+    root.addEventListener("focusin", function (event) {
+      var bar = event.target.closest && event.target.closest(".bar, .card-btn");
+      if (bar && bar.dataset.mid) showPop(bar.dataset.mid, bar);
+    });
+    root.addEventListener("focusout", function (event) {
+      var next = event.relatedTarget;
+      if (next && next.closest && (next.closest("#popout") || next.closest(".bar, .card-btn"))) return;
+      hidePop();
+    });
     root.addEventListener("keydown", function (event) {
       var tag = event.target && event.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -2556,9 +2810,9 @@ globalThis.StoryAPI = (function () {
       if (key === "y" || key === "Y") { state.showYears = !state.showYears; render(); event.preventDefault(); }
       else if (key === "t" || key === "T") { toggleTheme(); event.preventDefault(); }
       else if (key === "f" || key === "F") { fit(); event.preventDefault(); }
-      else if (key === "+" || key === "=") { zoom(1.25); event.preventDefault(); }
-      else if (key === "-" || key === "_") { zoom(0.8); event.preventDefault(); }
-      else if (key === "Escape") { select(null); event.preventDefault(); }
+      else if (key === "+" || key === "=") { zoomAt(1.25, null); event.preventDefault(); }
+      else if (key === "-" || key === "_") { zoomAt(0.8, null); event.preventDefault(); }
+      else if (key === "Escape") { hidePop(); select(null); event.preventDefault(); }
       else if (key >= "1" && key <= "4") {
         var t = data.tracks[Number(key) - 1];
         if (t) { state.enabled[t.id] = !state.enabled[t.id]; render(); event.preventDefault(); }
@@ -2570,10 +2824,15 @@ globalThis.StoryAPI = (function () {
     var hash = (root.location.hash || "").replace(/^#/, "");
     var found = /(?:^|&)m=([^&]+)/.exec(hash);
     if (found) state.selected = decodeURIComponent(found[1]);
+    var viewGuess = Math.max(200, root.defaultView.innerWidth - labelWidth() - 48);
+    state.trackWidth = trackWidthForMonths(data, viewGuess, state.windowMonths);
     render();
-    root.defaultView.addEventListener("resize", function () { if (state.fitted) fit(); });
-    root.defaultView.addEventListener("load", function () { if (state.fitted) fit(); });
-    root.defaultView.requestAnimationFrame(fit);
+    root.defaultView.addEventListener("resize", function () {
+      if (state.fitted) fit();
+      else layoutDefault();
+    });
+    root.defaultView.addEventListener("load", layoutDefault);
+    root.defaultView.requestAnimationFrame(layoutDefault);
   }
 
   return {
@@ -2584,6 +2843,12 @@ globalThis.StoryAPI = (function () {
     audit: audit,
     formatSpan: formatSpan,
     isDashed: isDashed,
+    WINDOW_MONTHS: WINDOW_MONTHS,
+    axisSpanMonths: axisSpanMonths,
+    trackWidthForMonths: trackWidthForMonths,
+    monthsInView: monthsInView,
+    zoomScroll: zoomScroll,
+    popoutLines: popoutLines,
     mount: mount
   };
 })();
