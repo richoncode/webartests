@@ -103,7 +103,11 @@ body {
   font-size: 16.5px;
   line-height: 1.5;
 }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 12px 16px 72px; }
+.sheet { width: 100%; padding: 12px 16px 0; }
+.prose { max-width: 46rem; margin: 0 auto; padding: 0 16px 72px; }
+@media (min-width: 800px) {
+  .sheet { padding-left: 28px; padding-right: 28px; }
+}
 h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; }
 h1 { font-size: 1.45rem; margin: 0; }
 h2 { font-size: 1.35rem; margin: 0 0 8px; }
@@ -154,18 +158,18 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .year-status { font-size: 0.92rem; }
 .narratives { display: grid; gap: 10px; }
 @media (min-width: 800px) { .narratives { grid-template-columns: 1fr 1fr; } }
-.stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 4px; }
-.stage > div { min-width: 0; }
-@media (min-width: 980px) {
-  .stage { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
-  .detail { position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow: auto; }
-}
+.stage { display: block; margin-top: 4px; }
+#timeline, .board-scroll { max-width: none; }
 .board-scroll {
-  overflow-x: auto; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--paper);
-  -webkit-overflow-scrolling: touch;
-  /* Pan with one finger. Pinch on this board is handled in script. The rest of the page keeps browser zoom. */
-  touch-action: pan-x pan-y;
+  overflow: hidden; min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--paper);
+  /* Vertical page scroll stays. Horizontal pan and pinch are handled on this board only. */
+  touch-action: pan-y;
 }
+.time-scroll {
+  margin: 6px 0 0 var(--label-w);
+  overflow-x: auto; overflow-y: hidden; height: 14px;
+}
+#time-spacer { height: 1px; }
 .popout {
   position: fixed; z-index: 40; max-height: min(320px, 46vh); overflow: auto;
   background: var(--paper); color: var(--ink); border: 1px solid var(--line);
@@ -184,9 +188,15 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .connection { min-height: 1.4em; margin: 0 0 8px; font-weight: 650; }
 .axis, .track { position: relative; }
 .track { overflow: hidden; }
-.axis { height: 36px; }
+.axis { height: 44px; }
 .tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--tick); }
-.year-num { position: absolute; top: 8px; left: 4px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tick-quarter { top: 26px; bottom: auto; height: 8px; border-left-color: var(--muted); opacity: 0.55; }
+.year-num { position: absolute; top: 2px; left: 4px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.quarter-num {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; letter-spacing: 0.03em; color: var(--muted);
+  background: var(--paper); padding: 0 2px; white-space: nowrap; line-height: 1.2;
+}
 .now { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--accent); }
 .now span { position: absolute; top: 8px; right: 6px; font-size: 11px; color: var(--accent); white-space: nowrap; }
 .lane + .lane { border-top: 1px solid var(--line); }
@@ -208,7 +218,7 @@ button:focus-visible, .card-btn:focus-visible, a:focus-visible { outline: 3px so
 .mark { display: inline-block; margin-top: 2px; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--guess); font-weight: 750; }
 .bar.is-dashed .mark, .bar.is-explore .mark { color: var(--guess); }
 .when { display: block; font-size: 0.68rem; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.detail { padding: 14px; }
+.detail { margin-top: 16px; padding: 14px; position: static; max-height: none; }
 .detail-title { font-family: var(--serif); font-size: 1.25rem; margin-bottom: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .chip { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: var(--chip-bg); color: var(--ink); }
@@ -228,7 +238,8 @@ li { margin: 6px 0; }
 @media (max-width: 640px) {
   html[data-theme="dark"], html[data-theme="light"] { --label-w: 92px; }
   h1 { font-size: 1.3rem; }
-  .wrap { padding: 10px 12px 56px; }
+  .sheet { padding: 10px 12px 0; }
+  .prose { padding-bottom: 56px; }
   .lane-name { font-size: 0.75rem; }
 }
 
@@ -237,7 +248,7 @@ li { margin: 6px 0; }
 <body>
 <a class="skip" href="#timeline">Skip to timeline</a>
 <a class="skip" href="#questions">Skip to questions</a>
-<div class="wrap">
+<div class="sheet">
   <header class="top">
     <div class="top-row">
       <h1 id="page-title">Expertise timeline</h1>
@@ -248,6 +259,7 @@ li { margin: 6px 0; }
   <div class="toolbar" role="toolbar" aria-label="Timeline controls">
     <button type="button" id="toggle-years" aria-pressed="true">Year numbers</button>
     <span class="year-status" id="year-status">Year numbers are shown.</span>
+    <span class="year-status" id="scale-readout" title="Zoom relative to the default 2.5 year view. Fit shows the whole span.">2.5 years · 1×</span>
     <button type="button" id="fit">Fit</button>
     <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
     <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
@@ -256,26 +268,29 @@ li { margin: 6px 0; }
     <div id="filters"></div>
   </div>
   <div class="stage">
-    <div>
-      <section id="timeline" aria-label="Timeline">
-        <h2 id="timeline-heading">Four lanes</h2>
-        <p id="connection" class="connection"></p>
-        <div class="board-scroll" id="board-scroll">
-          <div class="axis-row">
-            <div class="axis-spacer" aria-hidden="true"></div>
-            <div class="axis" id="axis"></div>
-          </div>
-          <div id="lanes"></div>
+    <section id="timeline" aria-label="Timeline">
+      <h2 id="timeline-heading">Four lanes</h2>
+      <p id="connection" class="connection"></p>
+      <div class="board-scroll" id="board-scroll">
+        <div class="axis-row">
+          <div class="axis-spacer" aria-hidden="true"></div>
+          <div class="axis" id="axis"></div>
         </div>
-      </section>
-      <section id="undated"></section>
-    </div>
+        <div id="lanes"></div>
+      </div>
+      <div class="time-scroll" id="time-scroll" aria-label="Scroll the timeline">
+        <div id="time-spacer"></div>
+      </div>
+    </section>
     <aside class="detail" id="detail" aria-live="polite">
       <h2>Evidence</h2>
       <p>Select a bar or an off-axis card. Evidence, guesses, and any shared story thread show up here.</p>
     </aside>
+    <section id="undated"></section>
   </div>
-  <div id="popout" class="popout" role="tooltip" hidden></div>
+</div>
+<div id="popout" class="popout" role="tooltip" hidden></div>
+<div class="prose">
   <section id="questions"></section>
   <section class="about" id="about">
     <h2>How to read this</h2>
@@ -298,7 +313,7 @@ li { margin: 6px 0; }
   "legend": "Guess means the date or the lane is still a best guess. Exploration and Interest only stay off the axis. A second outline is the same story thread, not a cause.",
   "keys": "Keys: Y year numbers, T theme, F fit, plus and minus zoom, 1 to 4 lanes, arrows move, Esc clears.",
   "questionsHeading": "Open questions",
-  "questionsLede": "These sit above the timeline so a guess can be checked before it hardens. Answer them in any order. The first ones decide whether a dashed bar should become solid, move, or leave.",
+  "questionsLede": "These sit under the chart so a guess can be checked before it hardens. Answer them in any order. The first ones decide whether a dashed bar should become solid, move, or leave.",
   "timelineHeading": "Four lanes",
   "undatedHeading": "Off the axis",
   "undatedLede": "No honest month or year belongs on these yet. They are not dropped into a gap to make the picture look complete.",
@@ -1973,7 +1988,10 @@ globalThis.StoryAPI = (function () {
     return "";
   }
 
-  var WINDOW_MONTHS = 18;
+  var WINDOW_MONTHS = 30;
+  var SCALE_MIN = 0.2;
+  var SCALE_MAX = 200;
+  var MAX_LAYOUT_PX = 16000;
 
   function axisSpanMonths(data) {
     return monthNum(data.axis.end, "end") - monthNum(data.axis.start, "start");
@@ -1988,6 +2006,113 @@ globalThis.StoryAPI = (function () {
   function monthsInView(data, trackWidth, viewportPx) {
     if (!trackWidth) return axisSpanMonths(data);
     return axisSpanMonths(data) * (viewportPx / trackWidth);
+  }
+
+  var QUARTER_MIN_PX = 22;
+
+  function quarterMarks(data, trackWidth, showYears, viewStart, visibleMonths) {
+    var axisStart = monthNum(data.axis.start, "start");
+    var axisEnd = monthNum(data.axis.end, "end");
+    var span = axisEnd - axisStart;
+    var marks = [];
+    if (!span || !trackWidth) return marks;
+    var windowed = typeof viewStart === "number" && typeof visibleMonths === "number" && visibleMonths > 0;
+    var origin = windowed ? viewStart : axisStart;
+    var limit = windowed ? viewStart + visibleMonths : axisEnd;
+    var quarterPx = windowed ? trackWidth * 3 / visibleMonths : trackWidth * 3 / span;
+    var show = !!(showYears && quarterPx >= QUARTER_MIN_PX);
+    var firstYear = Math.floor(origin / 12);
+    var lastYear = Math.floor((limit - 0.001) / 12);
+    var yearLefts = [];
+    (data.axis.ticks || []).forEach(function (year) {
+      var t = monthNum(year, "start");
+      if (windowed) {
+        if (t < origin - 1 || t > limit + 1) return;
+        yearLefts.push((t - viewStart) / visibleMonths * trackWidth);
+      } else {
+        yearLefts.push((t - axisStart) / span * trackWidth);
+      }
+    });
+    for (var year = firstYear; year <= lastYear; year++) {
+      for (var q = 0; q < 4; q++) {
+        var start = year * 12 + q * 3;
+        var end = start + 3;
+        if (end <= origin || start >= limit) continue;
+        var from = Math.max(start, origin);
+        var to = Math.min(end, limit);
+        var center = (from + to) / 2;
+        var left = windowed
+          ? (center - viewStart) / visibleMonths * trackWidth
+          : (center - axisStart) / span * trackWidth;
+        var crowded = yearLefts.some(function (x) { return Math.abs(x - left) < 34; });
+        marks.push({
+          label: show && !crowded ? "Q" + (q + 1) : "",
+          quarter: q + 1,
+          left: left
+        });
+      }
+    }
+    return marks;
+  }
+
+  function clampScale(scale) {
+    if (scale < SCALE_MIN) return SCALE_MIN;
+    if (scale > SCALE_MAX) return SCALE_MAX;
+    return scale;
+  }
+
+  function visibleMonthsForScale(scale) {
+    return WINDOW_MONTHS / scale;
+  }
+
+  function clampViewStart(viewStart, visibleMonths, axisStart, axisEnd) {
+    var maxStart = axisEnd - visibleMonths;
+    if (maxStart < axisStart) maxStart = axisStart;
+    if (viewStart < axisStart) return axisStart;
+    if (viewStart > maxStart) return maxStart;
+    return viewStart;
+  }
+
+  function zoomViewStart(viewStart, visibleMonths, nextVisible, pointerFrac, axisStart, axisEnd) {
+    var frac = pointerFrac;
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    var focal = viewStart + frac * visibleMonths;
+    var nextStart = focal - frac * nextVisible;
+    return clampViewStart(nextStart, nextVisible, axisStart, axisEnd);
+  }
+
+  function layoutWidth(viewportPx, visibleMonths, spanMonths) {
+    var natural = viewportPx * (spanMonths / visibleMonths);
+    if (!isFinite(natural) || natural < viewportPx) natural = viewportPx;
+    return Math.min(MAX_LAYOUT_PX, natural);
+  }
+
+  function scrollForViewStart(viewStart, spacerWidth, viewportPx, axisStart, axisEnd, visibleMonths) {
+    var maxScroll = Math.max(0, spacerWidth - viewportPx);
+    var maxStart = Math.max(axisStart, axisEnd - visibleMonths);
+    if (maxScroll <= 0 || maxStart <= axisStart) return 0;
+    return (viewStart - axisStart) / (maxStart - axisStart) * maxScroll;
+  }
+
+  function viewStartForScroll(scrollLeft, spacerWidth, viewportPx, axisStart, axisEnd, visibleMonths) {
+    var maxScroll = Math.max(0, spacerWidth - viewportPx);
+    var maxStart = Math.max(axisStart, axisEnd - visibleMonths);
+    if (maxScroll <= 0) return axisStart;
+    return axisStart + (scrollLeft / maxScroll) * (maxStart - axisStart);
+  }
+
+  function scaleReadout(scale, visibleMonths, fitted) {
+    if (fitted) return "Full span · Fit";
+    var scaleText = scale >= 100 ? String(Math.round(scale)) : String(Math.round(scale * 100) / 100);
+    var windowText;
+    if (Math.abs(visibleMonths - WINDOW_MONTHS) < 0.05 && Math.abs(scale - 1) < 0.02) windowText = "2.5 years";
+    else if (visibleMonths >= 2) windowText = Math.round(visibleMonths) + " months";
+    else {
+      var days = Math.max(1, Math.round(visibleMonths * (365.25 / 12)));
+      windowText = days + (days === 1 ? " day" : " days");
+    }
+    return windowText + " · " + scaleText + "×";
   }
 
   function zoomScroll(oldWidth, newWidth, scrollLeft, pointerInTrack) {
@@ -2015,7 +2140,7 @@ globalThis.StoryAPI = (function () {
   function initialState(data) {
     var enabled = {};
     data.tracks.forEach(function (t) { enabled[t.id] = true; });
-    return { showYears: true, selected: null, fitted: false, windowMonths: WINDOW_MONTHS, trackWidth: 960, enabled: enabled };
+    return { showYears: true, selected: null, fitted: false, scale: 1, windowMonths: WINDOW_MONTHS, trackWidth: 960, enabled: enabled };
   }
 
   function audit(data) {
@@ -2154,12 +2279,24 @@ globalThis.StoryAPI = (function () {
       placed.push(item);
     });
     var rows = placed.reduce(function (max, item) { return Math.max(max, item.row + 1); }, 1);
-    return {
-      rows: rows,
-      bars: placed.map(function (item) {
-        var left = item.startFrac * state.trackWidth;
-        var width = Math.max(10, (item.endFrac - item.startFrac) * state.trackWidth);
-        if (left + width > state.trackWidth - 2) width = Math.max(10, state.trackWidth - 2 - left);
+    var windowed = typeof state.viewStart === "number" && typeof state.visibleMonths === "number" && state.visibleMonths > 0;
+    var bars = placed.map(function (item) {
+        var left;
+        var width;
+        if (windowed) {
+          var vis = state.visibleMonths;
+          var origin = state.viewStart;
+          var px = state.trackWidth;
+          if (item.b <= origin || item.a >= origin + vis) return null;
+          var rawLeft = (item.a - origin) / vis * px;
+          var rawRight = (item.b - origin) / vis * px;
+          left = Math.max(0, rawLeft);
+          width = Math.max(2, Math.min(px, rawRight) - left);
+        } else {
+          left = item.startFrac * state.trackWidth;
+          width = Math.max(10, (item.endFrac - item.startFrac) * state.trackWidth);
+          if (left + width > state.trackWidth - 2) width = Math.max(10, state.trackWidth - 2 - left);
+        }
         var when = formatSpan(item.m, state.showYears);
         var mark = markFor(item.m, trackId);
         var selected = state.selected === item.m.id;
@@ -2175,8 +2312,9 @@ globalThis.StoryAPI = (function () {
           selected: selected, related: related,
           dashed: mark === "Guess", explore: mark === "Exploration" || mark === "Interest only"
         };
-      })
-    };
+      }).filter(Boolean);
+    var visibleRows = bars.reduce(function (max, bar) { return Math.max(max, bar.row + 1); }, 1);
+    return { rows: visibleRows, bars: bars };
   }
 
   function detailModel(data, state) {
@@ -2215,10 +2353,24 @@ globalThis.StoryAPI = (function () {
     var ticks = [];
     var axisStart = monthNum(data.axis.start, "start");
     var axisEnd = monthNum(data.axis.end, "end");
+    var windowed = typeof state.viewStart === "number" && typeof state.visibleMonths === "number" && state.visibleMonths > 0;
     data.axis.ticks.forEach(function (year) {
-      var left = (monthNum(year, "start") - axisStart) / (axisEnd - axisStart) * state.trackWidth;
+      var t = monthNum(year, "start");
+      var left;
+      if (windowed) {
+        if (t < state.viewStart - 0.2 || t > state.viewStart + state.visibleMonths + 0.2) return;
+        left = (t - state.viewStart) / state.visibleMonths * state.trackWidth;
+      } else {
+        left = (t - axisStart) / (axisEnd - axisStart) * state.trackWidth;
+      }
       ticks.push({ year: state.showYears ? year : "", left: left });
     });
+    var quarters = quarterMarks(data, state.trackWidth, state.showYears, windowed ? state.viewStart : undefined, windowed ? state.visibleMonths : undefined).filter(function (mark) {
+      return mark.label;
+    });
+    var scaleForLabel = state.fitted ? WINDOW_MONTHS / (axisEnd - axisStart) : (state.scale || WINDOW_MONTHS / (state.windowMonths || WINDOW_MONTHS));
+    var monthsForLabel = state.fitted ? (axisEnd - axisStart) : (state.visibleMonths || WINDOW_MONTHS / scaleForLabel);
+    var scaleLabel = scaleReadout(scaleForLabel, monthsForLabel, !!state.fitted);
     var questions = data.questions.map(function (q) {
       return { ask: q.priority + ". " + q.ask, prompt: q.prompt, dated: state.showYears ? (q.datedNote || "") : "" };
     });
@@ -2271,6 +2423,7 @@ globalThis.StoryAPI = (function () {
       legend: data.legend,
       keys: data.keys,
       yearStatus: state.showYears ? data.yearShown : data.yearHidden,
+      scaleLabel: scaleLabel,
       questionsHeading: data.questionsHeading,
       questionsLede: data.questionsLede,
       questions: questions,
@@ -2279,6 +2432,7 @@ globalThis.StoryAPI = (function () {
       connection: connection,
       lanes: lanes,
       ticks: ticks,
+      quarters: quarters,
       nowLabel: "now",
       undatedHeading: data.undatedHeading,
       undatedLede: data.undatedLede,
@@ -2357,6 +2511,8 @@ globalThis.StoryAPI = (function () {
       root.getElementById("legend").textContent = vm.legend;
       root.getElementById("keys").textContent = vm.keys;
       root.getElementById("year-status").textContent = vm.yearStatus;
+      var scaleNode = root.getElementById("scale-readout");
+      if (scaleNode) scaleNode.textContent = vm.scaleLabel;
       root.getElementById("toggle-years").setAttribute("aria-pressed", state.showYears ? "true" : "false");
       var filters = root.getElementById("filters");
       filters.textContent = "";
@@ -2395,17 +2551,30 @@ globalThis.StoryAPI = (function () {
       axis.textContent = "";
       var axisStart = monthNum(data.axis.start, "start");
       var axisEnd = monthNum(data.axis.end, "end");
-      var nowLeft = (monthNum(data.axis.now, "start") - axisStart) / (axisEnd - axisStart) * state.trackWidth;
+      var nowPoint = monthNum(data.axis.now, "start");
+      var nowLeft = (typeof state.viewStart === "number" && state.visibleMonths)
+        ? (nowPoint - state.viewStart) / state.visibleMonths * state.trackWidth
+        : (nowPoint - axisStart) / (axisEnd - axisStart) * state.trackWidth;
       vm.ticks.forEach(function (tick) {
         var mark = el("div", "tick");
         mark.style.left = tick.left + "px";
         if (tick.year && Math.abs(tick.left - nowLeft) > 36) mark.appendChild(el("span", "year-num", tick.year));
         axis.appendChild(mark);
       });
-      var now = el("div", "now");
-      now.style.left = nowLeft + "px";
-      now.appendChild(el("span", "", vm.nowLabel));
-      axis.appendChild(now);
+      (vm.quarters || []).forEach(function (quarter) {
+        if (!quarter.label) return;
+        if (Math.abs(quarter.left - nowLeft) < 28) return;
+        var mark = el("div", "tick tick-quarter");
+        mark.style.left = quarter.left + "px";
+        mark.appendChild(el("span", "quarter-num", quarter.label));
+        axis.appendChild(mark);
+      });
+      if (nowLeft >= -8 && nowLeft <= state.trackWidth + 8) {
+        var now = el("div", "now");
+        now.style.left = nowLeft + "px";
+        now.appendChild(el("span", "", vm.nowLabel));
+        axis.appendChild(now);
+      }
       var lanes = root.getElementById("lanes");
       lanes.textContent = "";
       if (!vm.lanes.length) lanes.appendChild(el("p", "empty", "Turn a lane back on."));
@@ -2516,6 +2685,7 @@ globalThis.StoryAPI = (function () {
         anchors.appendChild(al);
       }
       if (scroller) scroller.scrollLeft = keep;
+      syncTimeScroll();
       pinLabels();
       if (state.popId) {
         var popAnchor = root.querySelector("[data-mid=\"" + state.popId + "\"]");
@@ -2589,30 +2759,54 @@ globalThis.StoryAPI = (function () {
       }
     }
 
-    function scrollToFraction(frac, align) {
-      var scroller = root.getElementById("board-scroll");
-      var view = viewportTrackWidth(scroller);
-      var x = frac * state.trackWidth;
-      var left = align === "center" ? x - view / 2 : x - view;
-      var maxLeft = Math.max(0, state.trackWidth - view);
-      scroller.scrollLeft = Math.max(0, Math.min(left, maxLeft));
+    function timeBounds() {
+      return { origin: monthNum(data.axis.start, "start"), limit: monthNum(data.axis.end, "end") };
     }
 
-    function applyWidth(width, scrollLeft) {
+    function currentVisible() {
+      if (state.fitted) return axisSpanMonths(data);
+      var scale = clampScale(state.scale || 1);
+      return WINDOW_MONTHS / scale;
+    }
+
+    function syncTimeScroll() {
       var scroller = root.getElementById("board-scroll");
-      state.trackWidth = width;
+      var timeScroll = root.getElementById("time-scroll");
+      var spacer = root.getElementById("time-spacer");
+      if (!scroller || !timeScroll || !spacer || typeof state.viewStart !== "number") return;
+      var view = viewportTrackWidth(scroller);
+      var bounds = timeBounds();
+      var visible = state.visibleMonths || currentVisible();
+      var width = layoutWidth(view, visible, bounds.limit - bounds.origin);
+      spacer.style.width = width + "px";
+      var next = scrollForViewStart(state.viewStart, width, view, bounds.origin, bounds.limit, visible);
+      if (Math.abs(timeScroll.scrollLeft - next) > 1) {
+        state.ignoreScroll = true;
+        timeScroll.scrollLeft = next;
+        state.ignoreScroll = false;
+      }
+    }
+
+    function paintView() {
+      var scroller = root.getElementById("board-scroll");
+      var view = viewportTrackWidth(scroller);
+      var bounds = timeBounds();
+      var visible = currentVisible();
+      state.visibleMonths = visible;
+      state.windowMonths = visible;
+      state.viewStart = clampViewStart(state.viewStart, visible, bounds.origin, bounds.limit);
+      state.trackWidth = view;
+      if (!state.fitted) state.scale = WINDOW_MONTHS / visible;
       render();
-      var maxLeft = Math.max(0, state.trackWidth - viewportTrackWidth(scroller));
-      scroller.scrollLeft = Math.max(0, Math.min(scrollLeft, maxLeft));
-      pinLabels();
+      rightEdge = state.viewStart + state.visibleMonths;
     }
 
     function fit() {
-      var scroller = root.getElementById("board-scroll");
-      var view = viewportTrackWidth(scroller);
+      var bounds = timeBounds();
       state.fitted = true;
-      state.windowMonths = axisSpanMonths(data);
-      applyWidth(Math.max(280, view), 0);
+      state.viewStart = bounds.origin;
+      state.scale = WINDOW_MONTHS / (bounds.limit - bounds.origin);
+      paintView();
     }
 
     function zoomAt(factor, clientX) {
@@ -2623,55 +2817,60 @@ globalThis.StoryAPI = (function () {
       var pointerInTrack = pointer - rect.left - labelWidth();
       if (pointerInTrack < 0) pointerInTrack = 0;
       if (pointerInTrack > view) pointerInTrack = view;
-      var span = axisSpanMonths(data);
-      var nextMonths = state.windowMonths / factor;
-      nextMonths = Math.max(1, Math.min(span, nextMonths));
-      var nextWidth = trackWidthForMonths(data, view, nextMonths);
-      nextWidth = Math.max(view, Math.min(80000, nextWidth));
-      var nextScroll = zoomScroll(state.trackWidth, nextWidth, scroller.scrollLeft, pointerInTrack);
+      var pointerFrac = view > 0 ? pointerInTrack / view : 0.5;
+      var bounds = timeBounds();
+      if (state.fitted) state.scale = WINDOW_MONTHS / axisSpanMonths(data);
+      var visible = WINDOW_MONTHS / (state.scale || 1);
+      var nextScale = clampScale((state.scale || 1) * factor);
+      var nextVisible = WINDOW_MONTHS / nextScale;
+      state.viewStart = zoomViewStart(state.viewStart, visible, nextVisible, pointerFrac, bounds.origin, bounds.limit);
+      state.scale = nextScale;
       state.fitted = false;
-      state.windowMonths = monthsInView(data, nextWidth, view);
-      applyWidth(nextWidth, nextScroll);
+      paintView();
+    }
+
+    function panByPixels(dx) {
+      var scroller = root.getElementById("board-scroll");
+      var view = viewportTrackWidth(scroller);
+      var bounds = timeBounds();
+      var visible = currentVisible();
+      if (view <= 0) return;
+      state.viewStart = clampViewStart(state.viewStart + (dx / view) * visible, visible, bounds.origin, bounds.limit);
+      paintView();
     }
 
     var anchored = false;
+    var rightEdge = null;
     function layoutDefault() {
       var scroller = root.getElementById("board-scroll");
-      var view = viewportTrackWidth(scroller);
+      var bounds = timeBounds();
       if (state.fitted) {
         fit();
+        if (scroller.clientWidth > 80) anchored = true;
         return;
       }
-      var width = Math.max(view, trackWidthForMonths(data, view, state.windowMonths));
-      var keepEdge = null;
-      if (anchored && state.trackWidth > 0) {
-        keepEdge = Math.min(1, (scroller.scrollLeft + view) / state.trackWidth);
-      }
-      state.trackWidth = width;
-      render();
-      if (keepEdge != null) {
-        scrollToFraction(keepEdge, "end");
-      } else {
-        var anchor = 1;
-        var align = "end";
+      if (!anchored) {
+        if (typeof state.scale !== "number") state.scale = 1;
+        if (!state.fitted) state.scale = clampScale(state.scale);
+        var visible = currentVisible();
+        state.viewStart = bounds.limit - visible;
         if (state.selected) {
           var chosen = null;
           for (var i = 0; i < data.milestones.length; i++) {
             if (data.milestones[i].id === state.selected) chosen = data.milestones[i];
           }
           if (chosen && chosen.placement === "axis" && chosen.start) {
-            var axis0 = monthNum(data.axis.start, "start");
-            var span = axisSpanMonths(data);
-            var endNum = chosen.current ? monthNum(data.axis.end, "end") : monthNum(chosen.end, "end");
+            var endNum = chosen.current ? bounds.limit : monthNum(chosen.end, "end");
             var mid = (monthNum(chosen.start, "start") + endNum) / 2;
-            anchor = (mid - axis0) / span;
-            align = "center";
+            state.viewStart = mid - visible / 2;
           }
         }
-        scrollToFraction(anchor, align);
         if (scroller.clientWidth > 80) anchored = true;
+      } else if (rightEdge != null) {
+        state.viewStart = rightEdge - currentVisible();
       }
-      pinLabels();
+      paintView();
+      rightEdge = state.viewStart + state.visibleMonths;
     }
 
     function select(id, opts) {
@@ -2742,18 +2941,40 @@ globalThis.StoryAPI = (function () {
     root.getElementById("zoom-out").addEventListener("click", function () { zoomAt(0.8, null); });
     var board = root.getElementById("board-scroll");
     board.addEventListener("scroll", pinLabels, { passive: true });
+    var timeScroll = root.getElementById("time-scroll");
+    if (timeScroll) {
+      timeScroll.addEventListener("scroll", function () {
+        if (state.ignoreScroll || state.fitted) return;
+        var scroller = root.getElementById("board-scroll");
+        var spacer = root.getElementById("time-spacer");
+        var bounds = timeBounds();
+        var view = viewportTrackWidth(scroller);
+        var visible = currentVisible();
+        var width = spacer ? spacer.offsetWidth : layoutWidth(view, visible, bounds.limit - bounds.origin);
+        state.viewStart = viewStartForScroll(timeScroll.scrollLeft, width, view, bounds.origin, bounds.limit, visible);
+        paintView();
+      });
+    }
     board.addEventListener("wheel", function (event) {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
       var dy = event.deltaY;
       if (event.deltaMode === 1) dy *= 16;
       else if (event.deltaMode === 2) dy *= 400;
-      var factor = Math.exp(-dy * 0.002);
-      if (factor < 0.5) factor = 0.5;
-      if (factor > 2) factor = 2;
-      zoomAt(factor, event.clientX);
+      if (event.ctrlKey) {
+        event.preventDefault();
+        var factor = Math.exp(-dy * 0.002);
+        if (factor < 0.5) factor = 0.5;
+        if (factor > 2) factor = 2;
+        zoomAt(factor, event.clientX);
+        return;
+      }
+      var dx = event.deltaX;
+      if (event.shiftKey && Math.abs(dy) > Math.abs(dx)) dx = dy;
+      if (Math.abs(dx) < 0.5) return;
+      event.preventDefault();
+      panByPixels(dx);
     }, { passive: false });
     var pinch = null;
+    var drag = null;
     function touchDistance(touches) {
       var dx = touches[0].clientX - touches[1].clientX;
       var dy = touches[0].clientY - touches[1].clientY;
@@ -2762,25 +2983,40 @@ globalThis.StoryAPI = (function () {
     board.addEventListener("touchstart", function (event) {
       if (event.touches.length === 2) {
         pinch = { dist: touchDistance(event.touches), x: (event.touches[0].clientX + event.touches[1].clientX) / 2 };
+        drag = null;
+      } else if (event.touches.length === 1) {
+        drag = { x: event.touches[0].clientX, y: event.touches[0].clientY, axis: "" };
       }
     }, { passive: true });
     board.addEventListener("touchmove", function (event) {
-      if (event.touches.length !== 2 || !pinch) return;
-      event.preventDefault();
-      var dist = touchDistance(event.touches);
-      if (pinch.dist > 0 && dist > 0) {
-        var factor = dist / pinch.dist;
-        if (factor < 0.5) factor = 0.5;
-        if (factor > 2) factor = 2;
-        var x = (event.touches[0].clientX + event.touches[1].clientX) / 2;
-        zoomAt(factor, x);
+      if (event.touches.length === 2 && pinch) {
+        event.preventDefault();
+        var dist = touchDistance(event.touches);
+        if (pinch.dist > 0 && dist > 0) {
+          var factor = dist / pinch.dist;
+          if (factor < 0.5) factor = 0.5;
+          if (factor > 2) factor = 2;
+          var x = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+          zoomAt(factor, x);
+        }
+        pinch.dist = dist;
+        return;
       }
-      pinch.dist = dist;
+      if (!drag || event.touches.length !== 1) return;
+      var dx = event.touches[0].clientX - drag.x;
+      var dy = event.touches[0].clientY - drag.y;
+      if (!drag.axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) drag.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      if (drag.axis === "x") {
+        event.preventDefault();
+        panByPixels(-dx);
+        drag.x = event.touches[0].clientX;
+      }
     }, { passive: false });
     board.addEventListener("touchend", function (event) {
       if (event.touches.length < 2) pinch = null;
+      if (event.touches.length === 0) drag = null;
     });
-    board.addEventListener("touchcancel", function () { pinch = null; });
+    board.addEventListener("touchcancel", function () { pinch = null; drag = null; });
     root.addEventListener("mouseover", function (event) {
       var bar = event.target.closest && event.target.closest(".bar, .card-btn");
       if (!bar || !bar.dataset.mid) return;
@@ -2824,8 +3060,12 @@ globalThis.StoryAPI = (function () {
     var hash = (root.location.hash || "").replace(/^#/, "");
     var found = /(?:^|&)m=([^&]+)/.exec(hash);
     if (found) state.selected = decodeURIComponent(found[1]);
-    var viewGuess = Math.max(200, root.defaultView.innerWidth - labelWidth() - 48);
-    state.trackWidth = trackWidthForMonths(data, viewGuess, state.windowMonths);
+    state.scale = 1;
+    state.fitted = false;
+    var boot = timeBounds();
+    state.viewStart = boot.limit - WINDOW_MONTHS;
+    state.visibleMonths = WINDOW_MONTHS;
+    state.trackWidth = Math.max(200, root.defaultView.innerWidth - labelWidth() - 48);
     render();
     root.defaultView.addEventListener("resize", function () {
       if (state.fitted) fit();
@@ -2844,9 +3084,22 @@ globalThis.StoryAPI = (function () {
     formatSpan: formatSpan,
     isDashed: isDashed,
     WINDOW_MONTHS: WINDOW_MONTHS,
+    SCALE_MIN: SCALE_MIN,
+    SCALE_MAX: SCALE_MAX,
+    MAX_LAYOUT_PX: MAX_LAYOUT_PX,
+    clampScale: clampScale,
+    visibleMonthsForScale: visibleMonthsForScale,
+    clampViewStart: clampViewStart,
+    zoomViewStart: zoomViewStart,
+    layoutWidth: layoutWidth,
+    scrollForViewStart: scrollForViewStart,
+    viewStartForScroll: viewStartForScroll,
+    scaleReadout: scaleReadout,
     axisSpanMonths: axisSpanMonths,
     trackWidthForMonths: trackWidthForMonths,
     monthsInView: monthsInView,
+    QUARTER_MIN_PX: QUARTER_MIN_PX,
+    quarterMarks: quarterMarks,
     zoomScroll: zoomScroll,
     popoutLines: popoutLines,
     mount: mount
