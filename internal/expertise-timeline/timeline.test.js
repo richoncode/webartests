@@ -94,6 +94,24 @@ test('year numbers are hidden by default and shown only when asked', () => {
   assert.doesNotMatch(onText, /Vice President|Senior Software|Principal Consultant|@/);
 });
 
+test('the timeline and its controls come before the questions', () => {
+  const fitAt = html.indexOf('id="fit"');
+  const zoomAt = html.indexOf('id="zoom-in"');
+  const timelineAt = html.indexOf('id="timeline"');
+  const questionsAt = html.indexOf('id="questions"');
+  const introAt = html.indexOf('id="intro"');
+  assert.ok(fitAt > 0 && zoomAt > fitAt && timelineAt > zoomAt);
+  assert.ok(timelineAt < questionsAt);
+  assert.ok(questionsAt < introAt);
+  assert.match(html, /<html lang="en" data-theme="dark">/);
+  assert.match(html, /expertise-timeline-theme/);
+  assert.match(html, /id="toggle-theme"/);
+  assert.doesNotMatch(html, /prefers-color-scheme/);
+  assert.doesNotMatch(html, /matchMedia/);
+  assert.match(html, /Open questions/);
+  assert.match(html, /Evidence/);
+});
+
 test('the page is an unlisted internal draft and is not in the public catalog', () => {
   assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
   assert.match(html, /Internal working draft/);
