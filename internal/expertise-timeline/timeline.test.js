@@ -401,7 +401,7 @@ test('each block titles the work that belongs on its lane', () => {
   assert.ok(hughes);
   assert.equal(hughes.showText, false);
   assert.match(hughes.aria, /videodisc/);
-  assert.ok(hughes.height < 30);
+  assert.equal(hughes.height, 68);
 
   const wide = api.initialState(data);
   wide.viewStart = 1990 * 12;
@@ -433,15 +433,16 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
     assert.equal(brand.logo.includes('..'), false);
     const file = path.join(__dirname, brand.logo);
     assert.equal(fs.existsSync(file), true, brand.logo);
-    const svg = fs.readFileSync(file, 'utf8');
-    assert.doesNotMatch(svg, /<script/i);
+    if (file.endsWith('.svg')) assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /<script/i);
     const record = provenance[path.basename(brand.logo)];
     assert.ok(record && record.source.startsWith('https://commons.wikimedia.org/'), brand.logo);
   }
   assert.equal(data.brands.ms1.logo, data.brands.ms2.logo);
   assert.match(data.brands.ms1.logo, /microsoft-wordmark\.svg$/);
   assert.match(data.brands.amazon.logo, /amazon-wordmark\.svg$/);
-  for (const id of ['magic-leap', 'niantic', 'hughes', 'daqri', 'quintar', 'zenith']) {
+  assert.match(data.brands['magic-leap'].logo, /magic-leap\.svg$/);
+  assert.match(data.brands.hughes.logo, /hughes-aircraft\.png$/);
+  for (const id of ['niantic', 'daqri', 'quintar', 'zenith', 'margrave']) {
     assert.equal(data.brands[id].logo || '', '');
   }
   const span = api.axisSpanMonths(data);
@@ -469,6 +470,44 @@ test('each employer has a sourced mark or a plain name, never a made-up logo', (
   const hughes = api.viewModel(data, narrow).lanes.flatMap(lane => lane.bars).find(bar => bar.id === 'hughes-videodisc');
   assert.equal(hughes.brand, null);
   assert.equal(hughes.showText, false);
+});
+
+test('lane height stays fixed while close bars are only drawn apart', () => {
+  const span = api.axisSpanMonths(data);
+  const axisStart = 1986 * 12;
+  const axisEnd = axisStart + span;
+  function heights(viewStart) {
+    const state = api.initialState(data);
+    state.viewStart = viewStart;
+    state.visibleMonths = 48;
+    state.trackWidth = 1250;
+    const lanes = api.viewModel(data, state).lanes;
+    return Object.fromEntries(lanes.map(lane => [lane.id, lane.height]));
+  }
+  const latest = heights(axisEnd - 48);
+  const dense = heights(1990 * 12);
+  const mid = heights(2008 * 12);
+  assert.deepEqual(latest, dense);
+  assert.deepEqual(dense, mid);
+  assert.ok(latest.authoring >= latest.compute);
+  const hughes = data.milestones.find(m => m.id === 'hughes-videodisc');
+  const state = api.initialState(data);
+  state.viewStart = 1990 * 12;
+  state.visibleMonths = 48;
+  state.trackWidth = 1400;
+  const bars = api.viewModel(data, state).lanes.find(lane => lane.id === 'authoring').bars;
+  const disc = bars.find(bar => bar.id === 'hughes-videodisc');
+  const fire = bars.find(bar => bar.id === 'hughes-3d');
+  assert.equal(disc.when, api.formatSpan(hughes, true));
+  assert.equal(hughes.start, '1990-04');
+  assert.equal(hughes.end, '1991-03');
+  assert.ok(disc.row !== fire.row);
+  const nudged = bars.filter(bar => bar.nudged);
+  nudged.forEach(bar => {
+    const source = data.milestones.find(m => m.id === bar.id);
+    assert.equal(bar.when, api.formatSpan(source, true));
+    assert.match(bar.aria, /source date/);
+  });
 });
 
 test('a wheel over the open popout still pans and pinches the chart', () => {
