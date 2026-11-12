@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 13V7l5-4 5 4v6H3z' fill='%2307080c' stroke='%235b9bd5'/%3E%3C/svg%3E">
+  <title>Ask for a city, get the city — PLATEAU MCP · #MCPMonday</title>
+  <meta name="description" content="A slow orbit over textured Marunouchi and Tokyo Station, streamed from the PLATEAU 3D Tiles an agent finds for Chiyoda.">
+  <meta property="og:title" content="Ask for a city, get the city">
+  <meta property="og:description" content="The PLATEAU MCP server finds Japan’s public 3D city models. This page streams the Chiyoda LOD2 tiles it returns.">
+  <meta property="og:image" content="https://richoncode.github.io/webartests/mcpmondays/plateau/post-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="1200">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://richoncode.github.io/webartests/mcpmondays/plateau/post-image.png">
+  <link rel="stylesheet" href="../../shared/css/main.css">
+  <script>window.CESIUM_BASE_URL = "https://cdn.jsdelivr.net/npm/cesium@1.135/Build/Cesium/";</script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.135/Build/Cesium/Widgets/widgets.css">
+  <style>
+    html, body { background: #07080c; }
+    body { padding: 0; overflow-x: hidden; }
+    button:focus-visible, a:focus-visible { outline: 2px solid #5b9bd5; outline-offset: 2px; }
+
+    .hero { position: relative; height: 100dvh; min-height: 640px; background: #07080c; overflow: hidden; }
+    #cesium { position: absolute; inset: 0; }
+    #cesium .cesium-widget, #cesium canvas { width: 100%; height: 100%; }
+    #poster {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; object-position: center center;
+      z-index: 1; pointer-events: none; background: #07080c;
+      transform: scale(1.04);
+      animation: settle 3.2s ease-out forwards;
+      transition: opacity 0.9s ease;
+    }
+    #poster.gone { opacity: 0; }
+    #poster.is-hidden { display: none; }
+    @keyframes settle { to { transform: scale(1); } }
+    .vignette {
+      position: absolute; inset: 0; z-index: 2; pointer-events: none;
+      background:
+        linear-gradient(#07080cf2, #07080c00 22%, #07080c00 68%, #07080cf0 100%),
+        radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.38) 100%);
+    }
+
+    .hud {
+      position: absolute; inset: 0; z-index: 3;
+      display: flex; flex-direction: column; gap: 12px;
+      padding: max(14px, env(safe-area-inset-top)) 18px max(12px, env(safe-area-inset-bottom));
+      pointer-events: none;
+    }
+    .hud > * { pointer-events: auto; }
+    .top { display: flex; align-items: flex-start; gap: 16px; }
+    a.back { color: #8b93a0; text-decoration: none; font-size: 14px; padding-top: 4px; flex: none; }
+    a.back:hover { color: #ddd; }
+    .brand { min-width: 0; }
+    .brand .section-label { margin: 0 0 4px; color: #5b9bd5; }
+    .brand h1 {
+      font-size: clamp(28px, 4vw, 46px); font-weight: 750; letter-spacing: -0.035em;
+      line-height: 0.98; margin: 0; max-width: 16ch;
+    }
+    .brand h1 span { display: block; color: #d5dbe3; font-weight: 650; }
+    .top-actions { margin-left: auto; display: flex; gap: 8px; flex: none; }
+    .top-actions button { min-height: 40px; border-radius: 999px; padding: 8px 14px; background: rgba(12,14,18,0.72); backdrop-filter: blur(10px); }
+    #flood[aria-pressed="true"] { background: #1e2d40; border-color: #5b9bd5; color: #fff; }
+
+    .strip-row { display: flex; align-items: stretch; gap: 8px; min-height: 0; }
+    .strip {
+      display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+      flex: 1; min-width: 0; touch-action: pan-x; padding-bottom: 2px;
+    }
+    .strip::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: 0 0 auto; width: min(268px, 78vw); text-align: left;
+      display: grid; grid-template-columns: 22px 1fr; column-gap: 8px; align-items: start;
+      border-radius: 14px; padding: 8px 12px 9px;
+      background: rgba(8,10,14,0.72); border: 1px solid rgba(255,255,255,0.1);
+      color: #c5ccd6; backdrop-filter: blur(12px);
+      opacity: 0.45; transition: opacity 0.35s, border-color 0.35s, box-shadow 0.35s;
+    }
+    .chip.on { opacity: 1; border-color: rgba(91,155,213,0.85); box-shadow: 0 0 24px -12px #5b9bd5; }
+    .chip.pinned { border-color: #e8eef6; }
+    .chip .n {
+      grid-row: span 2; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px;
+      border-radius: 50%; background: #5b9bd5; color: #071018; font-size: 11px; font-weight: 750;
+    }
+    .chip code { font-size: 12px; color: #fff; min-width: 0; }
+    .chip .res { margin-top: 2px; font-size: 12px; color: #9aa6b5; line-height: 1.35; min-width: 0; }
+    .chip.on .res { color: #d5deea; }
+    button.replay { flex: none; align-self: center; min-height: 36px; border-radius: 999px; padding: 6px 12px; background: rgba(8,10,14,0.72); }
+
+    .grow { flex: 1; pointer-events: none !important; }
+    .dock { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+    .place { max-width: min(440px, 100%); }
+    .ask {
+      margin: 0; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #8b93a0; font-weight: 700;
+    }
+    .ask b { color: #fff; font-weight: 700; letter-spacing: 0; text-transform: none; font-size: 18px; margin-left: 6px; }
+    .where { margin: 2px 0 0; color: #c5ccd6; font-size: 14px; }
+    #live { display: inline-block; margin-left: 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #5b9bd5; font-weight: 700; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+    .legend[hidden] { display: none; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #c5ccd6; }
+    .legend i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); display: block; box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
+    .legend .src { flex-basis: 100%; color: #8b93a0; font-size: 11px; }
+    .honest {
+      margin: 0; max-width: 420px; text-align: right;
+      background: rgba(8,10,14,0.72); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 8px 12px; backdrop-filter: blur(10px);
+      color: #c5ccd6; font-size: 12.5px; line-height: 1.45;
+    }
+    .honest strong { color: #fff; }
+    .credits {
+      display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+      font-size: 11px; line-height: 1.4; color: #8b93a0;
+    }
+    .credits a { color: #9eb6cc; text-decoration: none; border-bottom: 1px solid #2a3a4a; }
+    .credits a:hover { color: #fff; }
+    #cesium-credit { display: inline-flex; align-items: center; }
+    #cesium-credit .cesium-credit-logoContainer, #cesium-credit .cesium-credit-expand-link { display: inline-flex; }
+    #cesium-credit img, #cesium-credit svg { height: 16px !important; width: auto !important; }
+    .hint { margin: 0; font-size: 12px; color: #8b93a0; }
+
+    .card, .raw {
+      position: absolute; z-index: 5;
+      width: min(390px, calc(100vw - 24px));
+      max-height: min(62dvh, 560px); overflow: auto;
+      background: rgba(10,12,16,0.94); border: 1px solid #2a3340; border-radius: 16px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.45); color: #d5dbe3;
+      padding: 14px 14px 12px;
+    }
+    .card { left: 16px; bottom: 118px; }
+    .raw { right: 16px; top: 168px; }
+    .card[hidden], .raw[hidden] { display: none; }
+    .card h2, .raw h2 { font-size: 18px; margin: 0 28px 2px 0; line-height: 1.25; }
+    .card .addr { margin: 0 0 10px; color: #9aa6b5; font-size: 13px; }
+    .card .gloss { color: #8b93a0; font-size: 12px; }
+    .rows { display: grid; grid-template-columns: 118px 1fr; gap: 4px 10px; font-size: 13px; }
+    .rows .k { color: #8b93a0; }
+    .rows .v { color: #fff; overflow-wrap: anywhere; }
+    .haz { margin: 0 0 8px; }
+    .haz .k { color: #8b93a0; font-size: 12px; line-height: 1.3; }
+    .haz .v { color: #fff; font-size: 13px; }
+    .card h3 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #5b9bd5; margin: 12px 0 6px; }
+    .card .id { font-size: 11px; color: #9aa6b5; overflow-wrap: anywhere; }
+    .card .foot, .raw .foot { margin: 10px 0 0; font-size: 11px; color: #8b93a0; line-height: 1.4; }
+    .x {
+      position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; min-height: 28px;
+      padding: 0; border-radius: 50%; font-size: 16px; line-height: 1;
+    }
+    .all { margin-top: 8px; }
+    .all summary { cursor: pointer; color: #9eb6cc; font-size: 12px; }
+    .all pre, .raw pre {
+      margin: 8px 0 0; max-height: 240px; overflow: auto; white-space: pre-wrap;
+      font-size: 11px; line-height: 1.45; color: #d5dbe3;
+      background: #0c1016; border: 1px solid #243041; border-radius: 8px; padding: 8px;
+    }
+
+    .sheet { position: relative; z-index: 4; background: #07080c; max-width: 860px; margin: 0 auto; padding: 64px 24px 90px; }
+    .sheet .section { margin-bottom: 48px; }
+    .sheet .section-label { color: #5b9bd5; }
+    .lede { color: #b7c0cc; font-size: 15px; line-height: 1.65; max-width: 680px; }
+    a.inline { color: #8ebbe4; text-decoration: none; border-bottom: 1px solid #2c455c; }
+    a.inline:hover { color: #fff; }
+    .snippet { background: #10141b; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; margin: 14px 0; max-width: 680px; }
+    .snippet-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 16px; border-bottom: 1px solid #2a2a2a; }
+    .snippet-name { font-family: var(--font-mono); font-size: 12px; color: #8b93a0; }
+    .snippet pre { margin: 0; padding: 16px; overflow-x: auto; color: #e8eef6; font-size: 13px; line-height: 1.55; white-space: pre; }
+    button.copy-btn { font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; padding: 8px 12px; min-height: 32px; }
+    button.copy-btn.done { color: #5b9bd5; border-color: #5b9bd5; }
+    .note { font-size: 13px; color: #8b93a0; max-width: 680px; }
+    p code, .note code, td code { font-size: 12px; color: #e8eef6; background: #141820; border: 1px solid #2a2a2a; border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+    .prompts { display: grid; gap: 10px; max-width: 680px; }
+    .prompt { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; background: #10141b; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px 14px 14px 16px; }
+    .prompt p { margin: 0; color: #e8eef6; font-size: 14px; line-height: 1.5; max-width: none; }
+    .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .tool { background: #10141b; border: 1px solid #2a2a2a; border-radius: 14px; padding: 16px; }
+    .tool.used { border-color: #3d5f86; }
+    .tool h3 { font-size: 14px; margin: 0 0 6px; }
+    .tool h3 code { color: #fff; font-size: 12.5px; }
+    .tool p { margin: 0; font-size: 13px; color: #8b93a0; line-height: 1.5; max-width: none; }
+    .tool .badge { display: inline-block; margin-top: 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #5b9bd5; font-weight: 700; }
+    .callout { border-left: 3px solid #f0a040; background: #1a1208; border-radius: 0 8px 8px 0; padding: 12px 14px; color: #c5ccd6; font-size: 13.5px; line-height: 1.55; max-width: 680px; }
+    .callout strong { color: #fff; }
+    table.calls { width: 100%; border-collapse: collapse; font-size: 13px; max-width: 780px; }
+    table.calls th, table.calls td { text-align: left; vertical-align: top; padding: 10px 12px 10px 0; border-bottom: 1px solid #1c222c; color: #b7c0cc; }
+    table.calls th { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #8b93a0; font-weight: 700; }
+    .table-wrap { overflow-x: auto; }
+
+    @media (max-width: 800px) {
+      .hero { height: auto; min-height: 100dvh; }
+      .hud { position: relative; min-height: 100dvh; }
+      #cesium, #poster, .vignette { position: fixed; height: 100dvh; }
+      .brand h1 { font-size: 30px; }
+      .dock { flex-direction: column; align-items: stretch; }
+      .honest { text-align: left; max-width: none; }
+      .card, .raw { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 54dvh; }
+      .top { flex-wrap: wrap; }
+      .top-actions { margin-left: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #poster { animation: none; transform: none; transition: none; }
+      .chip { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <section class="hero" id="hero">
+    <div id="cesium" role="img" aria-label="Textured 3D buildings of Marunouchi and Tokyo Station, streaming from PLATEAU."></div>
+    <img id="poster" src="poster.jpg" alt="Opening frame: textured Marunouchi and Tokyo Station from the PLATEAU Chiyoda model.">
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="hud">
+      <div class="top">
+        <a class="back" href="../">← Back</a>
+        <div class="brand">
+          <p class="section-label">#MCPMonday</p>
+          <h1>Ask for a city, <span>get the city.</span></h1>
+        </div>
+        <div class="top-actions">
+          <button type="button" id="flood" aria-pressed="false">Flood view</button>
+          <button type="button" id="post" aria-label="Download a 1200 by 1200 post image">Post image</button>
+        </div>
+      </div>
+
+      <!-- Summary lines match captured.json from the 2026-11-12 live calls. The script overwrites them from that file. -->
+      <div class="strip-row">
+        <div class="strip" id="strip" role="list" aria-label="Recorded tool calls">
+          <button type="button" class="chip" data-i="0" role="listitem"><span class="n">1</span><code>plateau_search_areas</code><span class="res">千代田区 · 13101</span></button>
+          <button type="button" class="chip" data-i="1" role="listitem"><span class="n">2</span><code>plateau_search_datasets</code><span class="res">d_13101_bldg · 建築物モデル（千代田区）</span></button>
+          <button type="button" class="chip" data-i="2" role="listitem"><span class="n">3</span><code>plateau_get_dataset</code><span class="res">13101-bldg-lod2-texture-latest/tileset.json</span></button>
+          <button type="button" class="chip" data-i="3" role="listitem"><span class="n">4</span><code>GET tileset.json</code><span class="res">200 · 3D Tiles 1.0</span></button>
+        </div>
+        <button type="button" class="replay" id="replay">Replay</button>
+      </div>
+
+      <div class="grow"></div>
+
+      <p class="hint" id="hint">Click a building. The card reads that feature’s tile attributes.</p>
+      <div class="dock">
+        <div class="place">
+          <p class="ask">Asked for <b>Chiyoda</b></p>
+          <p class="where">Marunouchi · Tokyo Station · LOD2 textured buildings <span id="live">Opening frame</span></p>
+          <div class="legend" id="legend" hidden>
+            <span><i style="--c:#5b9bd5"></i>under 0.5 m</span>
+            <span><i style="--c:#f0a040"></i>0.5 m to under 3 m</span>
+            <span><i style="--c:#6a7280"></i>no rank in this scenario</span>
+            <span class="src">Sumida &amp; Shingashi rivers, assumed maximum (L2). Colors are applied by this page.</span>
+          </div>
+        </div>
+        <p class="honest" id="status"><strong>The agent finds the data. The page draws it.</strong> An agent calls the PLATEAU MCP server and gets a dataset and a 3D Tiles URL. This page streams those public tiles. It does not run a model.</p>
+      </div>
+      <div class="credits">
+        <span>Source: Chiyoda City 3D city model, <a href="https://www.mlit.go.jp/plateau/">MLIT PLATEAU</a>. © the local government. <a href="https://www.mlit.go.jp/plateau/site-policy/">PDL 1.0</a>, compatible with CC BY 4.0. <a href="https://www.geospatial.jp/ckan/dataset/plateau-13101-chiyoda-ku-2025">Dataset</a>. Flood colors are added by this page.</span>
+        <span id="cesium-credit"></span>
+      </div>
+    </div>
+
+    <aside class="card" id="card" hidden role="dialog" aria-labelledby="card-title"></aside>
+    <aside class="raw" id="raw" hidden role="dialog" aria-labelledby="raw-title"></aside>
+  </section>
+
+  <main class="sheet">
+    <section class="section">
+      <p class="section-label">What you watched</p>
+      <h2>From a ward name to a renderable city</h2>
+      <p class="lede">The opening image is a saved frame of this same camera, so the first seconds are already Marunouchi while the tiles stream in. The chips replay one real session against the public server: search areas, search building datasets, open the dataset, then fetch the tileset URL it returned. The browser then loads that LOD2 textured model. No language model runs on this page.</p>
+    </section>
+
+    <section class="section" id="connect">
+      <p class="section-label">Connect</p>
+      <h2>One URL, no key</h2>
+      <p class="lede">Streamable HTTP, no token. Claude Code:</p>
+      <div class="snippet">
+        <div class="snippet-bar">
+          <span class="snippet-name">shell</span>
+          <button class="copy-btn" type="button" data-copy-target="#cmd">Copy</button>
+        </div>
+        <pre id="cmd">claude mcp add --transport http plateau https://api.plateauview.mlit.go.jp/mcp</pre>
+      </div>
+      <p>In Cursor, add this to <code>mcp.json</code>:</p>
+      <div class="snippet">
+        <div class="snippet-bar">
+          <span class="snippet-name">mcp.json</span>
+          <button class="copy-btn" type="button" data-copy-target="#mcp-json">Copy</button>
+        </div>
+        <pre id="mcp-json">{
+  "mcpServers": {
+    "plateau": {
+      "url": "https://api.plateauview.mlit.go.jp/mcp"
+    }
+  }
+}</pre>
+      </div>
+      <p class="note">Docs: <a class="inline" href="https://docs.plateauview.mlit.go.jp/mcp/overview/">PLATEAU MCP server</a>. Claude Desktop’s free plan does not speak HTTP MCP; the docs describe an adapter for that case. Cursor and Claude Code take the URL directly.</p>
+    </section>
+
+    <section class="section" id="try">
+      <p class="section-label">Try it</p>
+      <h2>Three prompts</h2>
+      <div class="prompts" id="prompts"></div>
+    </section>
+
+    <section class="section">
+      <p class="section-label">Recorded calls</p>
+      <h2>The path in the chips</h2>
+      <p>Run on 12 November 2026 against <code>https://api.plateauview.mlit.go.jp/mcp</code>. The chip text is taken from these responses. Open a chip for the JSON that came back. The area object’s <code>dataset_count</code> is 0 as returned; the dataset search is the call that finds <code>d_13101_bldg</code>.</p>
+      <div class="table-wrap">
+        <table class="calls">
+          <thead><tr><th>Call</th><th>Arguments</th><th>What came back</th></tr></thead>
+          <tbody>
+            <tr><td><code>plateau_search_areas</code></td><td><code>search_text: "千代田"</code></td><td>千代田区, code 13101</td></tr>
+            <tr><td><code>plateau_search_datasets</code></td><td><code>area_codes: ["13101"]</code>, <code>dataset_types: ["bldg"]</code></td><td><code>d_13101_bldg</code>, 建築物モデル（千代田区）, year 2025</td></tr>
+            <tr><td><code>plateau_get_dataset</code></td><td><code>id: "d_13101_bldg"</code></td><td>LOD2 textured 3D Tiles at <code>13101-bldg-lod2-texture-latest/tileset.json</code></td></tr>
+            <tr><td><code>GET tileset.json</code></td><td>that URL</td><td>HTTP 200, <code>Access-Control-Allow-Origin: *</code>, 3D Tiles 1.0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <p class="section-label">Flood view</p>
+      <h2>A rank that is stored on the tile</h2>
+      <p>On 12 November 2026 the LOD2 textured tiles for Chiyoda were checked directly, not from a side file. Each building’s batch table includes <code>隅田川・新河岸川流域（都道府県管理区間）_L2（想定最大規模）_浸水ランク</code>. Around Tokyo Station the values are <code>0.5m未満</code>, <code>0.5m以上3m未満</code>, or empty. Flood view colors those strings. It does not estimate a depth.</p>
+      <p>The same tiles also store other hazard fields, including Kanda River ranks and the Tokyo storm-surge rank from the 19 December 2024 map. They do not match the Sumida rank building for building. Click a building to read whichever of them are filled in. The dataset notes say survey attributes can be missing or out of step with the footprint, and most buildings have no name.</p>
+    </section>
+
+    <section class="section">
+      <p class="section-label">Catalog</p>
+      <h2>Fourteen tools</h2>
+      <p>Names as the server listed them that day. The four marked here are the path the chips replay.</p>
+      <div class="tool-grid" id="tools"></div>
+    </section>
+
+    <section class="section">
+      <p class="section-label">Before you rely on it</p>
+      <h2>Experimental, no SLA</h2>
+      <div class="callout">The PLATEAU MCP server is a trial. MLIT states there is no availability or performance guarantee, tools and response shapes can change without notice, and production use is not recommended. Support is not promised.</div>
+      <p class="note" style="margin-top:12px">Source: <a class="inline" href="https://docs.plateauview.mlit.go.jp/mcp/overview/">the project’s own overview</a>.</p>
+    </section>
+
+    <section class="section">
+      <p class="section-label">Credit</p>
+      <h2>Whose model this is</h2>
+      <p>The geometry and textures are the Chiyoda City 3D city model published through Project PLATEAU by the Ministry of Land, Infrastructure, Transport and Tourism. Copyright of that open data stays with the local government. Use is under the <a class="inline" href="https://www.mlit.go.jp/plateau/site-policy/">PLATEAU site policy</a>: 公共データ利用規約（第1.0版）, which MLIT says is compatible with CC BY 4.0, ODC BY, and ODbL. Cite the source if you reuse it. This page does not republish the files. Flood colors and the camera are added here, and should not be presented as a map MLIT drew.</p>
+      <p class="note">Open data record: <a class="inline" href="https://www.geospatial.jp/ckan/dataset/plateau-13101-chiyoda-ku-2025">plateau-13101-chiyoda-ku-2025</a>. The view is drawn with <a class="inline" href="https://cesium.com/">CesiumJS</a>.</p>
+      <p style="margin-top:18px"><button type="button" class="primary" id="post-2">Download 1200 × 1200 PNG</button></p>
+      <p class="note">The file is the current frame, with the title and the tool chips. Turn flood view on first if you want that version.</p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.135/Build/Cesium/Cesium.js"></script>
+  <script>
+    var TILESET_URL = "https://api.plateauview.mlit.go.jp/datacatalog/3dtiles/13101-bldg-lod2-texture-latest/tileset.json";
+    var FLOOD_KEY = "隅田川・新河岸川流域（都道府県管理区間）_L2（想定最大規模）_浸水ランク";
+    var RANK_COLOR = {
+      "0.5m未満": "#5b9bd5",
+      "0.5m以上3m未満": "#f0a040",
+      "3m以上5m未満": "#e74c3c",
+      "5m以上10m未満": "#c0392b",
+      "10m以上": "#8e1b12"
+    };
+    var RANK_EN = {
+      "0.5m未満": "under 0.5 m",
+      "0.5m以上3m未満": "0.5 m to under 3 m",
+      "3m以上5m未満": "3 m to under 5 m",
+      "5m以上10m未満": "5 m to under 10 m",
+      "10m以上": "10 m or more"
+    };
+    var NO_RANK = "#6a7280";
+    var USAGE_EN = {
+      "業務施設": "Office",
+      "商業施設": "Commercial",
+      "宿泊施設": "Lodging",
+      "不明": "Not classified",
+      "その他": "Other",
+      "運輸倉庫施設": "Transport or warehouse",
+      "店舗等併用住宅": "Shop with a residence",
+      "独立住宅": "Detached house",
+      "共同住宅": "Apartment",
+      "教育文化施設": "Education or culture",
+      "医療施設": "Medical",
+      "官公庁施設": "Government"
+    };
+    var CLASS_EN = {
+      "堅ろう建物": "Fire-resistant building",
+      "普通建物": "Ordinary building",
+      "普通無壁舎": "Open-walled structure",
+      "不明": "Not classified"
+    };
+    var HAZARD = [
+      ["Sumida & Shingashi, assumed maximum", "隅田川・新河岸川流域（都道府県管理区間）_L2（想定最大規模）"],
+      ["Kanda River, assumed maximum", "神田川流域（都道府県管理区間）_L2（想定最大規模）"],
+      ["Arakawa–Kanda, assumed maximum", "荒川水系神田川流域（都道府県管理区間）_L2（想定最大規模）"],
+      ["Arakawa–Kanda, planned scale", "荒川水系神田川流域（都道府県管理区間）_L1（計画規模）"],
+      ["Tokyo storm surge, Dec 2024 map", "高潮浸水想定_東京都高潮浸水想定区域図（令和6年12月19日）"],
+      ["Steep-slope collapse zone", "土砂災害リスク_急傾斜地の崩落"]
+    ];
+    var FIELD_EN = {
+      "gml:name": "Name",
+      "bldg:measuredHeight": "Measured height",
+      "bldg:usage": "Use",
+      "bldg:class": "Structure class",
+      "bldg:storeysAboveGround": "Storeys above ground",
+      "bldg:storeysBelowGround": "Storeys below ground",
+      "bldg:address": "Address",
+      "city_name": "City",
+      "gml_id": "Building id"
+    };
+    var PICKS = {
+      marunouchi: "bldg_a98349a1-56c0-4ec4-b22c-abe49301bd04",
+      station: "bldg_00133552-aa2d-431f-9786-877cd4ab98bc",
+      jptower: "bldg_f0028aa3-e666-4608-8b70-4e981a45d6b5"
+    };
+    var PROMPTS = [
+      "Which buildings in Chiyoda have LOD2 models, and give me the 3D Tiles link.",
+      "Find the CityGML files for the area around Tokyo Station and list the tallest buildings.",
+      "What flood risk attributes does PLATEAU store for buildings, and where are they in the spec?"
+    ];
+    var TOOLS = [
+      ["plateau_search_areas", "Search prefectures, cities, and wards.", true],
+      ["plateau_get_area", "Details for one area code.", false],
+      ["plateau_search_datasets", "Find datasets by area and type.", true],
+      ["plateau_get_dataset", "One dataset, including 3D Tiles URLs.", true],
+      ["plateau_list_dataset_types", "List dataset types.", false],
+      ["plateau_get_metadata", "Catalog-wide years, spec versions, and counts.", false],
+      ["plateau_get_citygml_files", "CityGML files by mesh code, spatial id, or box.", false],
+      ["plateau_citygml_get_features", "Feature ids that meet a spatial id.", false],
+      ["plateau_citygml_get_attributes", "Attributes for building ids in a CityGML file.", false],
+      ["plateau_citygml_get_geoid_height", "Geoid height at a latitude and longitude.", false],
+      ["plateau_explain_spatial_id", "How a PLATEAU spatial id is formed.", false],
+      ["plateau_spec_outline", "Table of contents of the specification.", false],
+      ["plateau_spec_read", "Read one specification section.", false],
+      ["plateau_spec_search", "Full-text search of the specification.", false]
+    ];
+
+    var params = new URLSearchParams(location.search);
+    var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches || params.get("still") === "1";
+    var mobile = matchMedia("(max-width: 800px)").matches;
+    var TARGET = { lon: 139.76535, lat: 35.68105, height: 24 };
+    var orbit = { angle: 200 * Math.PI / 180, pitch: -30 * Math.PI / 180, range: 760 };
+    var orbitOn = !reduced;
+    var orbitArmed = false;
+    var floodOn = params.get("flood") === "1";
+    var viewer = null;
+    var tileset = null;
+    var capture = null;
+    var pinned = -1;
+    var replayTimer = [];
+    var faded = false;
+    var liveReady = false;
+    var started = performance.now();
+    var holdMs = reduced ? 400 : 3200;
+
+    var $ = function (id) { return document.getElementById(id); };
+    function el(tag, props) {
+      var node = document.createElement(tag);
+      if (props) Object.keys(props).forEach(function (k) {
+        if (k === "text") node.textContent = props[k];
+        else if (k === "class") node.className = props[k];
+        else node.setAttribute(k, props[k]);
+      });
+      for (var i = 2; i < arguments.length; i++) {
+        var child = arguments[i];
+        if (child == null) continue;
+        node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+      }
+      return node;
+    }
+
+    function summarize(step) {
+      var r = step.response || {};
+      if (step.tool === "plateau_search_areas") {
+        var a = (r.areas || [])[0];
+        return a ? a.name + " · " + a.code : "no area";
+      }
+      if (step.tool === "plateau_search_datasets") {
+        var d = (r.datasets || [])[0];
+        return d ? d.id + " · " + d.name : "no dataset";
+      }
+      if (step.tool === "plateau_get_dataset") {
+        var item = (r.items || []).filter(function (i) { return i.lod === 2 && i.texture === "TEXTURE"; })[0];
+        if (!item || !item.latest_url) return "no tileset";
+        var parts = item.latest_url.split("/");
+        return parts.slice(-2).join("/");
+      }
+      if (step.kind === "http") {
+        var v = r.body && r.body.asset && r.body.asset.version;
+        return (r.status || "?") + " · 3D Tiles " + (v || "?");
+      }
+      return "";
+    }
+
+    function tilesetFromCapture() {
+      if (!capture) return TILESET_URL;
+      var step = capture.steps.filter(function (s) { return s.tool === "plateau_get_dataset"; })[0];
+      if (!step) return TILESET_URL;
+      var item = (step.response.items || []).filter(function (i) { return i.lod === 2 && i.texture === "TEXTURE"; })[0];
+      return (item && item.latest_url) || TILESET_URL;
+    }
+
+    function playChips() {
+      replayTimer.forEach(clearTimeout);
+      replayTimer = [];
+      var chips = document.querySelectorAll(".chip");
+      chips.forEach(function (chip) { chip.classList.remove("on"); });
+      var gap = reduced ? 0 : 550;
+      chips.forEach(function (chip, i) {
+        replayTimer.push(setTimeout(function () { chip.classList.add("on"); }, 350 + i * gap));
+      });
+    }
+
+    function showRaw(i) {
+      var card = $("raw");
+      if (pinned === i) { pinned = -1; card.hidden = true; document.querySelectorAll(".chip").forEach(function (c) { c.classList.remove("pinned"); }); return; }
+      pinned = i;
+      document.querySelectorAll(".chip").forEach(function (c) { c.classList.toggle("pinned", Number(c.dataset.i) === i); });
+      card.hidden = false;
+      card.textContent = "";
+      var step = capture && capture.steps[i];
+      card.appendChild(el("button", { class: "x", type: "button", "aria-label": "Close" }, "×"));
+      card.querySelector(".x").addEventListener("click", function () { showRaw(i); });
+      if (!step) {
+        card.appendChild(el("h2", { id: "raw-title", text: "Capture not loaded" }));
+        card.appendChild(el("p", { class: "foot", text: "captured.json did not load, so this panel has no response body." }));
+        return;
+      }
+      card.appendChild(el("h2", { id: "raw-title" }, el("code", { text: step.tool })));
+      var pre = el("pre", { text: JSON.stringify({ arguments: step.arguments, response: step.response }, null, 2) });
+      card.appendChild(pre);
+      card.appendChild(el("p", { class: "foot", text: "Recorded " + (capture.recorded_at || "") + " from " + capture.endpoint + ". Nothing here was typed in by hand." }));
+    }
+
+    function englishOf(map, value) {
+      if (value == null || value === "") return "";
+      return map[String(value)] || "";
+    }
+
+    function fmtNum(v, digits, unit) {
+      var n = typeof v === "number" ? v : Number(v);
+      if (!Number.isFinite(n)) return v == null || v === "" ? "" : String(v);
+      return n.toFixed(digits) + (unit || "");
+    }
+
+    function prop(feature, name) {
+      try { return feature.getProperty(name); } catch (e) { return undefined; }
+    }
+
+    function showFeature(feature) {
+      $("hint").hidden = true;
+      var card = $("card");
+      card.hidden = false;
+      card.textContent = "";
+      var name = prop(feature, "gml:name");
+      var title = name ? String(name) : "No name in this model";
+      card.appendChild(el("button", { class: "x", type: "button", "aria-label": "Close" }, "×"));
+      card.querySelector(".x").addEventListener("click", closeCard);
+      card.appendChild(el("h2", { id: "card-title", text: title }));
+      var addr = prop(feature, "bldg:address");
+      if (addr) card.appendChild(el("p", { class: "addr", text: String(addr) }));
+
+      var rows = el("div", { class: "rows" });
+      function add(label, value, gloss) {
+        if (value == null || value === "") return;
+        rows.appendChild(el("div", { class: "k", text: label }));
+        var cell = el("div", { class: "v", text: String(value) });
+        if (gloss) cell.appendChild(el("div", { class: "gloss", text: "English: " + gloss }));
+        rows.appendChild(cell);
+      }
+      add("Measured height", fmtNum(prop(feature, "bldg:measuredHeight"), 1, " m"));
+      add("Use", prop(feature, "bldg:usage"), englishOf(USAGE_EN, prop(feature, "bldg:usage")));
+      add("Class", prop(feature, "bldg:class"), englishOf(CLASS_EN, prop(feature, "bldg:class")));
+      add("Storeys above", prop(feature, "bldg:storeysAboveGround"));
+      add("Storeys below", prop(feature, "bldg:storeysBelowGround"));
+      add("City", prop(feature, "city_name"));
+      card.appendChild(rows);
+
+      var names = [];
+      try { names = feature.getPropertyIds ? feature.getPropertyIds() : feature.getPropertyNames(); } catch (e) { names = []; }
+      var hazardRows = el("div");
+      var hazardCount = 0;
+      HAZARD.forEach(function (pair) {
+        var label = pair[0], prefix = pair[1];
+        var rank = prop(feature, prefix + "_浸水ランク");
+        if (rank == null || rank === "") rank = prop(feature, prefix + "_区域区分");
+        var depth = prop(feature, prefix + "_浸水深");
+        if ((rank == null || rank === "") && (depth == null || depth === "")) return;
+        hazardCount++;
+        var item = el("div", { class: "haz", title: prefix });
+        item.appendChild(el("div", { class: "k", text: label }));
+        var cell = el("div", { class: "v" });
+        if (rank != null && rank !== "") {
+          cell.appendChild(document.createTextNode(String(rank)));
+          var gloss = RANK_EN[String(rank)];
+          if (gloss) cell.appendChild(el("div", { class: "gloss", text: "English: " + gloss }));
+        }
+        if (depth != null && depth !== "") {
+          cell.appendChild(el("div", { class: "gloss", text: "Depth " + fmtNum(depth, 2, " m") }));
+        }
+        item.appendChild(cell);
+        hazardRows.appendChild(item);
+      });
+      if (hazardCount) {
+        card.appendChild(el("h3", { text: "Hazard fields on this building" }));
+        card.appendChild(hazardRows);
+      }
+
+      var id = prop(feature, "gml_id");
+      if (id) card.appendChild(el("p", { class: "id", text: String(id) }));
+
+      var dump = {};
+      var empty = 0;
+      names.forEach(function (key) {
+        var value = prop(feature, key);
+        if (value == null || value === "") { empty++; return; }
+        dump[key] = value;
+      });
+      var details = el("details", { class: "all" });
+      details.appendChild(el("summary", { text: "All non-empty attributes (" + Object.keys(dump).length + ", " + empty + " empty hidden)" }));
+      details.appendChild(el("pre", { text: JSON.stringify(dump, null, 2) }));
+      card.appendChild(details);
+      card.appendChild(el("p", { class: "foot", text: "Read from the 3D Tiles feature that was clicked. English lines are translations of the stored words, not extra fields." }));
+    }
+
+    function closeCard() { $("card").hidden = true; }
+
+    function eachFeature(tile, fn) {
+      var content = tile && tile.content;
+      if (!content) return;
+      var list = [content];
+      if (content.innerContents) list = list.concat(content.innerContents);
+      list.forEach(function (c) {
+        if (!c || typeof c.getFeature !== "function") return;
+        var n = c.featuresLength || 0;
+        for (var i = 0; i < n; i++) fn(c.getFeature(i));
+      });
+    }
+    function visitTiles(tile, fn) {
+      if (!tile) return;
+      fn(tile);
+      var kids = tile.children || [];
+      for (var i = 0; i < kids.length; i++) visitTiles(kids[i], fn);
+    }
+    function paintFeature(feature) {
+      if (!floodOn) {
+        feature.color = Cesium.Color.WHITE;
+        return;
+      }
+      var rank = prop(feature, FLOOD_KEY);
+      var hex = RANK_COLOR[rank] || NO_RANK;
+      var c = Cesium.Color.fromCssColorString(hex);
+      feature.color = c;
+    }
+    function repaint() {
+      if (!tileset) return;
+      tileset.colorBlendMode = floodOn ? Cesium.Cesium3DTileColorBlendMode.MIX : Cesium.Cesium3DTileColorBlendMode.HIGHLIGHT;
+      tileset.colorBlendAmount = floodOn ? 0.78 : 0.0;
+      visitTiles(tileset.root, function (tile) { eachFeature(tile, paintFeature); });
+    }
+    function setFlood(on) {
+      floodOn = !!on;
+      $("flood").setAttribute("aria-pressed", floodOn ? "true" : "false");
+      $("legend").hidden = !floodOn;
+      $("flood").textContent = floodOn ? "Flood view on" : "Flood view";
+      repaint();
+    }
+
+    function findFeature(id) {
+      var found = null;
+      if (!tileset) return null;
+      visitTiles(tileset.root, function (tile) {
+        if (found) return;
+        eachFeature(tile, function (f) {
+          if (!found && prop(f, "gml_id") === id) found = f;
+        });
+      });
+      return found;
+    }
+
+    function placeCamera() {
+      var theta = -orbit.pitch;
+      var ground = orbit.range * Math.cos(theta);
+      var lift = orbit.range * Math.sin(theta);
+      var dNorth = ground * Math.cos(orbit.angle);
+      var dEast = ground * Math.sin(orbit.angle);
+      var lat = TARGET.lat + dNorth / 111320;
+      var lon = TARGET.lon + dEast / (111320 * Math.cos(TARGET.lat * Math.PI / 180));
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, TARGET.height + lift),
+        orientation: { heading: orbit.angle + Math.PI, pitch: orbit.pitch, roll: 0 }
+      });
+    }
+
+    function fadePoster() {
+      if (faded) return;
+      faded = true;
+      var poster = $("poster");
+      if (poster && !poster.classList.contains("is-hidden")) poster.classList.add("gone");
+      var wait = reduced ? 0 : 900;
+      setTimeout(function () { orbitArmed = orbitOn; }, wait);
+      var live = $("live");
+      if (live) live.textContent = "Live tiles";
+    }
+    function frameHasCity() {
+      try {
+        if (viewer && viewer.scene) viewer.scene.render();
+        var src = viewer.scene.canvas;
+        var probe = document.createElement("canvas");
+        probe.width = 8;
+        probe.height = 8;
+        var g = probe.getContext("2d", { willReadFrequently: true });
+        g.drawImage(src, src.width * 0.3, src.height * 0.28, src.width * 0.4, src.height * 0.4, 0, 0, 8, 8);
+        var data = g.getImageData(0, 0, 8, 8).data;
+        var bright = 0;
+        for (var i = 0; i < data.length; i += 4) bright += data[i] + data[i + 1] + data[i + 2];
+        return bright > 120;
+      } catch (e) {
+        return false;
+      }
+    }
+    function maybeFade() {
+      if (faded || !liveReady) return;
+      if (performance.now() - started < holdMs) {
+        setTimeout(maybeFade, 80);
+        return;
+      }
+      if (!frameHasCity() && performance.now() - started < 28000) {
+        setTimeout(maybeFade, 400);
+        return;
+      }
+      fadePoster();
+    }
+
+    function bootCesium() {
+      viewer = new Cesium.Viewer("cesium", {
+        animation: false,
+        timeline: false,
+        baseLayerPicker: false,
+        baseLayer: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        navigationHelpButton: false,
+        fullscreenButton: false,
+        infoBox: false,
+        selectionIndicator: false,
+        skyBox: false,
+        skyAtmosphere: false,
+        terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+        creditContainer: "cesium-credit",
+        contextOptions: { webgl: { preserveDrawingBuffer: true, alpha: false } },
+        requestRenderMode: false
+      });
+      viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#07080c");
+      viewer.scene.globe.show = false;
+      if (viewer.scene.sun) viewer.scene.sun.show = false;
+      if (viewer.scene.moon) viewer.scene.moon.show = false;
+      if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+      if (viewer.scene.fog) viewer.scene.fog.enabled = false;
+      viewer.resolutionScale = mobile ? 0.8 : 1;
+      viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
+      viewer.scene.screenSpaceCameraController.minimumZoomDistance = 40;
+      viewer.scene.screenSpaceCameraController.maximumZoomDistance = 8000;
+      viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+      placeCamera();
+
+      viewer.scene.renderError.addEventListener(function (scene, error) {
+        window.__plateau.errors.push(String(error));
+      });
+
+      var canvas = viewer.scene.canvas;
+      canvas.addEventListener("pointerdown", function () { orbitOn = false; orbitArmed = false; });
+      canvas.addEventListener("wheel", function () { orbitOn = false; orbitArmed = false; }, { passive: true });
+
+      var handler = new Cesium.ScreenSpaceEventHandler(canvas);
+      handler.setInputAction(function (movement) {
+        var picked = viewer.scene.pick(movement.position);
+        if (picked && typeof picked.getProperty === "function") showFeature(picked);
+        else closeCard();
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+      var last = performance.now();
+      viewer.scene.preUpdate.addEventListener(function () {
+        var now = performance.now();
+        var dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (orbitArmed) {
+          orbit.angle += (2.2 * Math.PI / 180) * dt;
+          placeCamera();
+        }
+      });
+
+      var url = tilesetFromCapture();
+      Cesium.Cesium3DTileset.fromUrl(url, {
+        maximumScreenSpaceError: mobile ? 16 : 8,
+        dynamicScreenSpaceError: false,
+        cullRequestsWhileMoving: false,
+        preferLeaves: true
+      }).then(function (ts) {
+        tileset = ts;
+        viewer.scene.primitives.add(tileset);
+        ts.tileLoad.addEventListener(function (tile) {
+          eachFeature(tile, paintFeature);
+          var want = params.get("pick");
+          if (want && PICKS[want]) {
+            var feature = findFeature(PICKS[want]);
+            if (feature) showFeature(feature);
+          }
+        });
+        function markLive() {
+          if (liveReady) return;
+          liveReady = true;
+          window.__plateau.ready = true;
+          maybeFade();
+        }
+        ts.initialTilesLoaded.addEventListener(markLive);
+        ts.loadProgress.addEventListener(function (pending) {
+          var stats = ts.statistics || {};
+          var readyTiles = stats.numberOfTilesWithContentReady || 0;
+          if (readyTiles >= 16 && pending < 24) markLive();
+        });
+        ts.tileFailed.addEventListener(function (err) {
+          window.__plateau.errors.push(String(err && (err.message || err.url || err)));
+        });
+        if (floodOn) setFlood(true);
+      }).catch(function (err) {
+        window.__plateau.errors.push(String(err));
+        $("status").innerHTML = "<strong>The agent finds the data. The page draws it.</strong> The live tiles did not start. The frame on screen is the saved opening view of the same tileset.";
+      });
+
+      setTimeout(function () {
+        if (!faded && liveReady) maybeFade();
+        if (!faded && !liveReady && performance.now() - started > 14000) {
+          $("status").innerHTML = "<strong>The agent finds the data. The page draws it.</strong> The tiles are still loading. This frame stays until they do.";
+        }
+      }, holdMs + 50);
+    }
+
+    function renderPost() {
+      viewer.scene.render();
+      var src = viewer.scene.canvas;
+      var S = 1200;
+      var c = document.createElement("canvas");
+      c.width = S;
+      c.height = S;
+      var g = c.getContext("2d");
+      var sw = src.width, sh = src.height;
+      var scale = Math.max(S / sw, S / sh);
+      var dw = sw * scale, dh = sh * scale;
+      g.fillStyle = "#07080c";
+      g.fillRect(0, 0, S, S);
+      g.drawImage(src, (S - dw) / 2, (S - dh) / 2, dw, dh);
+      var veil = g.createLinearGradient(0, 0, 0, S);
+      veil.addColorStop(0, "rgba(7,8,12,0.78)");
+      veil.addColorStop(0.28, "rgba(7,8,12,0.05)");
+      veil.addColorStop(0.62, "rgba(7,8,12,0)");
+      veil.addColorStop(1, "rgba(7,8,12,0.88)");
+      g.fillStyle = veil;
+      g.fillRect(0, 0, S, S);
+      g.fillStyle = "#5b9bd5";
+      g.font = "700 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      g.fillText("#MCPMONDAY", 64, 86);
+      g.fillStyle = "#ffffff";
+      g.font = "750 68px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      g.fillText("Ask for a city,", 64, 172);
+      g.fillStyle = "#d5dbe3";
+      g.fillText("get the city.", 64, 250);
+      g.fillStyle = "#c5ccd6";
+      g.font = "600 26px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      g.fillText(floodOn ? "Chiyoda  ·  flood view" : "Chiyoda  ·  Marunouchi / Tokyo Station", 64, 312);
+
+      var chips = document.querySelectorAll(".chip");
+      var y = 900;
+      chips.forEach(function (chip) {
+        var label = chip.querySelector("code").textContent;
+        var res = chip.querySelector(".res").textContent;
+        g.fillStyle = "rgba(8,10,14,0.82)";
+        roundRect(g, 56, y, 620, 54, 12);
+        g.fill();
+        g.strokeStyle = "rgba(91,155,213,0.85)";
+        g.lineWidth = 2;
+        g.stroke();
+        g.fillStyle = "#ffffff";
+        g.font = "650 18px 'SF Mono', ui-monospace, monospace";
+        g.fillText(label, 74, y + 22);
+        g.fillStyle = "#c5ccd6";
+        g.font = "500 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        g.fillText(res.length > 46 ? res.slice(0, 44) + "…" : res, 74, y + 42);
+        y += 62;
+      });
+      g.fillStyle = "#d5dbe3";
+      g.font = "600 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      g.fillText("The agent finds the data. The page draws it.", 56, 1176);
+      return c.toDataURL("image/png");
+    }
+    function roundRect(g, x, y, w, h, r) {
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.arcTo(x + w, y, x + w, y + h, r);
+      g.arcTo(x + w, y + h, x, y + h, r);
+      g.arcTo(x, y + h, x, y, r);
+      g.arcTo(x, y, x + w, y, r);
+      g.closePath();
+    }
+    function downloadPost() {
+      try {
+        var url = renderPost();
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = floodOn ? "plateau-mcp-flood-1200.png" : "plateau-mcp-1200.png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (err) {
+        $("post").textContent = "Export failed";
+        window.__plateau.errors.push(String(err));
+      }
+    }
+
+    function fillSheets() {
+      var prompts = $("prompts");
+      PROMPTS.forEach(function (text) {
+        var row = el("div", { class: "prompt" });
+        row.appendChild(el("p", { text: text }));
+        var btn = el("button", { class: "copy-btn", type: "button", text: "Copy" });
+        btn.addEventListener("click", function () {
+          navigator.clipboard.writeText(text).then(function () {
+            btn.textContent = "Copied";
+            btn.classList.add("done");
+            setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1400);
+          });
+        });
+        row.appendChild(btn);
+        prompts.appendChild(row);
+      });
+      var grid = $("tools");
+      TOOLS.forEach(function (t) {
+        var box = el("div", { class: t[2] ? "tool used" : "tool" });
+        box.appendChild(el("h3", {}, el("code", { text: t[0] })));
+        box.appendChild(el("p", { text: t[1] }));
+        if (t[2]) box.appendChild(el("span", { class: "badge", text: "In the chips" }));
+        grid.appendChild(box);
+      });
+      document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var text = document.querySelector(btn.getAttribute("data-copy-target")).textContent;
+          navigator.clipboard.writeText(text).then(function () {
+            btn.textContent = "Copied";
+            btn.classList.add("done");
+            setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1400);
+          });
+        });
+      });
+    }
+
+    document.querySelectorAll(".chip").forEach(function (chip) {
+      chip.addEventListener("click", function () { showRaw(Number(chip.dataset.i)); });
+    });
+    $("replay").addEventListener("click", playChips);
+    $("flood").addEventListener("click", function () { setFlood(!floodOn); });
+    $("post").addEventListener("click", downloadPost);
+    $("post-2").addEventListener("click", downloadPost);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { closeCard(); if (pinned >= 0) showRaw(pinned); }
+    });
+    var poster = $("poster");
+    function hideBrokenPoster() {
+      if (poster.complete && poster.naturalWidth === 0) poster.classList.add("is-hidden");
+    }
+    poster.addEventListener("error", function () { poster.classList.add("is-hidden"); });
+    hideBrokenPoster();
+
+    fillSheets();
+    playChips();
+    if (floodOn) {
+      $("flood").setAttribute("aria-pressed", "true");
+      $("legend").hidden = false;
+      $("flood").textContent = "Flood view on";
+    }
+
+    window.__plateau = {
+      ready: false,
+      errors: [],
+      setFlood: setFlood,
+      renderPost: renderPost,
+      canvasData: function () { return viewer.scene.canvas.toDataURL("image/jpeg", 0.86); },
+      tune: function (o) {
+        if (o.range) orbit.range = o.range;
+        if (o.pitch != null) orbit.pitch = o.pitch * Math.PI / 180;
+        if (o.angle != null) orbit.angle = o.angle * Math.PI / 180;
+        if (o.lon) TARGET.lon = o.lon;
+        if (o.lat) TARGET.lat = o.lat;
+        if (o.height != null) TARGET.height = o.height;
+        orbitArmed = false;
+        placeCamera();
+      },
+      openId: function (id) {
+        var feature = findFeature(id);
+        if (feature) showFeature(feature);
+        return !!feature;
+      }
+    };
+
+    fetch("captured.json").then(function (r) { return r.json(); }).then(function (json) {
+      capture = json;
+      document.querySelectorAll(".chip").forEach(function (chip) {
+        var step = capture.steps[Number(chip.dataset.i)];
+        if (!step) return;
+        chip.querySelector("code").textContent = step.tool;
+        chip.querySelector(".res").textContent = summarize(step);
+      });
+      TILESET_URL = tilesetFromCapture();
+    }).catch(function (err) {
+      window.__plateau.errors.push("capture: " + err);
+    });
+
+    bootCesium();
+  </script>
+</body>
+</html>
