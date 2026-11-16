@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How item trackers work — AirTag, Find Hub, and Tile</title>
+<meta name="description" content="An engineer-level explainer of crowd-sourced item finding: Apple Find My, Google Find Hub, third-party tags, DULT anti-stalking, UWB precision finding, and DIY research tools.">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: #0d0d0d;
+    color: #e8e8e8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 56px 24px 96px;
+  }
+  a { color: #5b9bd5; text-decoration: none; border-bottom: 1px solid #5b9bd544; }
+  a:hover { border-bottom-color: #5b9bd5; }
+  .page { max-width: 920px; margin: 0 auto; }
+  .kicker {
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #5b9bd5;
+    margin-bottom: 10px;
+  }
+  h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 14px; }
+  .lede { color: #999; font-size: 17px; line-height: 1.65; max-width: 720px; margin-bottom: 28px; }
+  .meta { color: #555; font-size: 13px; margin-bottom: 36px; }
+  .toc {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 48px;
+  }
+  .toc h2 { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #5b9bd5; margin-bottom: 12px; }
+  .toc ol { margin: 0 0 0 20px; }
+  .toc li { color: #aaa; font-size: 14px; margin: 4px 0; }
+  .toc a { border-bottom: none; }
+  .toc a:hover { border-bottom: 1px solid #5b9bd5; }
+  .callout {
+    background: #141a22;
+    border: 1px solid #2a3a4a;
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin: 0 0 48px;
+  }
+  .callout h2 { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #5b9bd5; margin-bottom: 8px; }
+  .callout p { color: #ccc; font-size: 15px; margin-bottom: 10px; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .spec { font-family: "SF Mono", "Fira Code", ui-monospace, monospace; font-size: 13px; color: #ddd; }
+  section { margin-bottom: 64px; }
+  section > h2 {
+    font-size: 24px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+    padding-top: 8px;
+  }
+  h3 { font-size: 18px; font-weight: 650; margin: 28px 0 10px; color: #fff; }
+  h4 { font-size: 15px; font-weight: 650; margin: 20px 0 8px; color: #ddd; }
+  p { margin-bottom: 14px; color: #c8c8c8; }
+  ul, ol { margin: 0 0 14px 22px; }
+  li { color: #c8c8c8; margin-bottom: 6px; }
+  li ul { margin: 6px 0 8px 20px; }
+  code, .mono {
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    font-size: 0.86em;
+    color: #eee;
+    background: #111;
+    border: 1px solid #262626;
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    margin: 0 0 18px;
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #d0d0d0;
+  }
+  .figure {
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    padding: 20px 16px 14px;
+    margin: 22px 0 28px;
+    overflow-x: auto;
+  }
+  .figure svg { display: block; width: 100%; height: auto; max-width: 880px; margin: 0 auto; }
+  .caption { color: #666; font-size: 13px; text-align: center; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid #2a2a2a;
+    border-radius: 14px;
+    margin: 16px 0 12px;
+    background: #141414;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 12px 14px;
+    border-bottom: 1px solid #262626;
+    color: #ccc;
+  }
+  th {
+    background: #1a1a1a;
+    color: #fff;
+    font-weight: 650;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child, th:first-child { font-weight: 650; color: #fff; }
+  .note { color: #888; font-size: 14px; }
+  .warn {
+    background: #1c1712;
+    border: 1px solid #3a2e22;
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin: 18px 0 22px;
+    color: #d8c8b0;
+    font-size: 15px;
+  }
+  .warn strong { color: #f0d9b0; }
+  .sources ol { margin-left: 22px; }
+  .sources li { font-size: 14px; color: #999; margin-bottom: 8px; }
+  .sources a { word-break: break-word; }
+  footer { color: #555; font-size: 13px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #222; }
+  .eq { font-family: "SF Mono", "Fira Code", ui-monospace, monospace; font-size: 13.5px; color: #ddd; background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="kicker">embedded / item-trackers</p>
+  <h1>How item-tracking systems work</h1>
+  <p class="lede">AirTag, Google Find Hub, and third-party tags all do the same surprising trick: the tag itself has no GPS and no cellular radio. It is a Bluetooth beacon. Other people&rsquo;s phones are the sensors, and the cloud only ever stores ciphertext the owner can decrypt.</p>
+  <p class="meta">Written 16 November 2026 (America/Los_Angeles) for Richard Bailey, WA3ZTI. Facts are cited; anything not independently verified is marked as such.</p>
+
+  <nav class="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#product">The tag in the Amazon link</a></li>
+      <li><a href="#core">The core idea: crowd-sourced offline finding</a></li>
+      <li><a href="#apple">Apple Find My and AirTag</a></li>
+      <li><a href="#google">Google Find Hub</a></li>
+      <li><a href="#third">Third-party tags, dual networks, and Tile</a></li>
+      <li><a href="#dult">Anti-stalking and DULT</a></li>
+      <li><a href="#precision">Precision finding: UWB vs BLE RSSI</a></li>
+      <li><a href="#compare">Comparison table</a></li>
+      <li><a href="#diy">DIY and research tools</a></li>
+      <li><a href="#sources">Sources</a></li>
+    </ol>
+  </nav>
+
+  <aside class="callout" id="product">
+    <h2>The Amazon link</h2>
+    <p>Richard&rsquo;s short link <a href="https://a.co/d/0eiOK3sI">https://a.co/d/0eiOK3sI</a> resolves to a <strong>Life360 Tile 4-pack</strong>, the current &ldquo;everything tracker&rdquo; in the Tile Mate line.</p>
+    <p class="spec">Brand: Life360 &nbsp;&middot;&nbsp; Model: T1801A (2024 Tile Mate, family T1801) &nbsp;&middot;&nbsp; ASIN: B0F2TQBG6T<br>
+    Direct URL: <a href="https://www.amazon.com/dp/B0F2TQBG6T">amazon.com/dp/B0F2TQBG6T</a></p>
+    <p>It is a Bluetooth-only tag on <em>Life360&rsquo;s own Tile Network</em>. It is not an Apple Find My accessory and not a Google Find Hub accessory. Official specs from Life360: up to 350 ft Bluetooth range, 100 dB ring, IP68, 3-year sealed (non-replaceable) battery, SOS button. The Amazon listing showed a one-time price of <strong>$79.24</strong> for the 4-pack when this page was written (16 Nov 2026). Prices move; treat that as a snapshot, not a quote.</p>
+  </aside>
+  <section id="core">
+    <h2>The core idea</h2>
+    <p>A dedicated GPS + LTE tracker needs a fat battery, a SIM, and a monthly plan. AirTag-class tags throw all of that away. The tag is a small BLE advertiser with a speaker, a button, maybe NFC, and sometimes an ultra-wideband radio for close-range pointing. Location comes from the phones already in people&rsquo;s pockets.</p>
+    <p>The loop looks like this:</p>
+    <ol>
+      <li><strong>The tag advertises.</strong> At a low duty cycle it broadcasts a short BLE advertisement that carries a rotating public identifier, not a lifetime serial number.</li>
+      <li><strong>Passerby phones act as relays.</strong> Phones that participate in the network (iPhones on Find My offline finding; Android phones on Find Hub) notice the advertisement, take their own GNSS / location fix, and build a report.</li>
+      <li><strong>The report is end-to-end encrypted to the tag&rsquo;s owner</strong> before it ever leaves the finder&rsquo;s phone. The finder does not learn who owns the tag. The owner does not learn who found it. The operator of the cloud (Apple or Google) is not supposed to be able to decrypt the coordinates.</li>
+      <li><strong>The owner later asks the cloud for reports</strong> under a lookup key derived from the current advertised identity, downloads the ciphertext, and decrypts it locally.</li>
+    </ol>
+
+    <figure class="figure" aria-label="Crowd-sourced finding diagram">
+      <svg viewBox="0 0 880 320" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>A tag advertises over BLE; a nearby phone encrypts its GPS fix; the cloud stores ciphertext; the owner decrypts it</title>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b9bd5"/>
+          </marker>
+        </defs>
+        <rect x="20" y="90" width="160" height="120" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="100" y="128" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">TAG</text>
+        <text x="100" y="150" text-anchor="middle" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">BLE advertiser</text>
+        <text x="100" y="168" text-anchor="middle" fill="#777" font-family="ui-monospace,monospace" font-size="11">rotating pubkey / EID</text>
+        <text x="100" y="186" text-anchor="middle" fill="#777" font-family="-apple-system,sans-serif" font-size="11">no GPS, no cellular</text>
+        <path d="M190 150 H250" stroke="#5b9bd5" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+        <text x="220" y="136" text-anchor="middle" fill="#5b9bd5" font-family="ui-monospace,monospace" font-size="11">BLE adv</text>
+        <rect x="260" y="90" width="170" height="120" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="345" y="128" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">FINDER PHONE</text>
+        <text x="345" y="150" text-anchor="middle" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">takes its GPS fix</text>
+        <text x="345" y="168" text-anchor="middle" fill="#777" font-family="-apple-system,sans-serif" font-size="11">encrypts to tag key</text>
+        <text x="345" y="186" text-anchor="middle" fill="#777" font-family="-apple-system,sans-serif" font-size="11">anonymous upload</text>
+        <path d="M440 150 H500" stroke="#5b9bd5" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+        <text x="470" y="136" text-anchor="middle" fill="#5b9bd5" font-family="ui-monospace,monospace" font-size="11">ciphertext</text>
+        <rect x="510" y="90" width="160" height="120" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="590" y="128" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">CLOUD</text>
+        <text x="590" y="150" text-anchor="middle" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">stores reports</text>
+        <text x="590" y="168" text-anchor="middle" fill="#777" font-family="-apple-system,sans-serif" font-size="11">indexed by key ID</text>
+        <text x="590" y="186" text-anchor="middle" fill="#777" font-family="-apple-system,sans-serif" font-size="11">cannot read coords</text>
+        <path d="M680 150 H740" stroke="#5b9bd5" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+        <text x="710" y="136" text-anchor="middle" fill="#5b9bd5" font-family="ui-monospace,monospace" font-size="11">fetch + decrypt</text>
+        <rect x="750" y="90" width="110" height="120" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="805" y="138" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">OWNER</text>
+        <text x="805" y="160" text-anchor="middle" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">holds private</text>
+        <text x="805" y="178" text-anchor="middle" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">key material</text>
+        <text x="440" y="250" text-anchor="middle" fill="#888" font-family="-apple-system,sans-serif" font-size="13">The tag never measures where it is. A stranger&rsquo;s phone does, then immediately forgets the plaintext.</text>
+        <text x="440" y="272" text-anchor="middle" fill="#555" font-family="-apple-system,sans-serif" font-size="12">Finder identity is not attached to the upload. Owner identity is not in the advertisement.</text>
+      </svg>
+      <figcaption class="caption">Crowd-sourced offline finding. The same shape is used by Find My, Find Hub, and (with a proprietary app and less public crypto) the Tile Network.</figcaption>
+    </figure>
+
+    <p>Two properties make this acceptable as a location system rather than a mass-surveillance radio:</p>
+    <ul>
+      <li><strong>Unlinkable advertisements.</strong> The identifier in the air rotates, so a passive BLE sniffer should not be able to follow one tag across a city by a stable MAC or payload.</li>
+      <li><strong>End-to-end encryption of the map pin.</strong> The network operator is a ciphertext store and a matching service, not a location broker.</li>
+    </ul>
+    <p>The rest of this page is how Apple, Google, and Tile each implement that idea, and where the safety and radio-engineering details bite.</p>
+  </section>
+  <section id="apple">
+    <h2>Apple Find My and AirTag</h2>
+    <p>Find My&rsquo;s offline-finding design is the best documented of the three, both because Apple published a platform-security description and because researchers at TU Darmstadt (Heinrich, Stute, Kornhuber, Hollick) reverse-engineered the closed pieces and published them at PETS 2021. Apple later published a Find My Network Accessory Specification for licensed third parties. Where the two sources disagree in emphasis, Apple&rsquo;s public security guide is treated as the official claim, and the paper / accessory spec as the detailed reconstruction.</p>
+
+    <h3>Rotating P-224 public keys</h3>
+    <p>When offline finding is enabled, the owner device generates an elliptic-curve key pair on NIST curve <strong>P-224</strong>, written <span class="mono">{d, P}</span>, plus a 256-bit secret <span class="mono">SK<sub>0</sub></span> and a counter <span class="mono">i</span> starting at zero. Apple&rsquo;s security guide is explicit that this private material is never sent to Apple. It syncs only among the owner&rsquo;s devices, end-to-end encrypted, via iCloud Keychain.</p>
+    <p>Each epoch derives a short-lived pair from that master material:</p>
+    <div class="eq">
+      SK<sub>i</sub> = KDF(SK<sub>i&minus;1</sub>, &ldquo;update&rdquo;)<br>
+      (u<sub>i</sub>, v<sub>i</sub>) = KDF(SK<sub>i</sub>, &ldquo;diversify&rdquo;)<br>
+      d<sub>i</sub> = u<sub>i</sub> &middot; d + v<sub>i</sub>  (mod n<sub>P-224</sub>)<br>
+      P<sub>i</sub> = u<sub>i</sub> &middot; P + v<sub>i</sub> &middot; G
+    </div>
+    <p>That affine diversification is the reason a passerby (or Apple) who sees many <span class="mono">P<sub>i</sub></span> values should not be able to tell they came from the same tag. The owner, who has <span class="mono">d</span> and the SK chain, can recompute every past and future pair and therefore recognize their own reports.</p>
+
+    <h3>Advertisement format</h3>
+    <p>P-224&rsquo;s public key is tight for a single BLE advertising PDU. The accessory specification, as reconstructed by Heinrich et al., puts part of the key in the advertiser address itself:</p>
+    <ul>
+      <li>The BLE advertising address is the first six bytes of the current public key, with the top two bits of byte 0 forced to <span class="mono">0b11</span> so the address looks like a static random device address.</li>
+      <li>The payload is Apple manufacturer data: AD type <span class="mono">0xFF</span>, company ID <span class="mono">0x004C</span>, Apple payload type <span class="mono">0x12</span>.</li>
+      <li><strong>Nearby state</strong> (owner recently connected): a short payload (type length <span class="mono">0x02</span>) with a status byte &mdash; battery level, a &ldquo;maintained&rdquo; bit if the owner connected during the current 15-minute period &mdash; and the two public-key bits that were overwritten in the address. The tag does not need the crowd in this state.</li>
+      <li><strong>Separated (&ldquo;wild&rdquo;) state</strong>: a longer payload (type length <span class="mono">0x19</span>) carrying bytes 6&ndash;27 of the public key, the recovered address bits, a status byte, and a hint byte. This is the packet a finder iPhone actually encrypts to.</li>
+    </ul>
+    <p>Only the X coordinate of <span class="mono">P<sub>i</sub></span> is advertised (28 bytes). The Y sign is omitted; it is not needed for the ECDH shared secret. The advertisement is not supposed to carry other AD types in that PDU, though a device may use a second advertising instance for other services.</p>
+
+    <h3>How a nearby iPhone encrypts its GPS fix</h3>
+    <p>Apple&rsquo;s public guide says finder devices &ldquo;help in the finding of the offline device by encrypting their location to the public key.&rdquo; The PETS paper fills in the cryptographic steps, recovered by reverse engineering:</p>
+    <ol>
+      <li>The finder samples its current location.</li>
+      <li>It generates a fresh ephemeral P-224 key pair <span class="mono">(d&prime;, p&prime;)</span>.</li>
+      <li>It does ECDH between <span class="mono">d&prime;</span> and the advertised public key <span class="mono">P<sub>i</sub></span>.</li>
+      <li>It runs ANSI X9.63 KDF on that shared secret, with the advertised public key as entropy and SHA-256 as the hash, and splits the output into a 16-byte AES key and a 16-byte IV.</li>
+      <li>It encrypts the location report with <strong>AES-GCM</strong>.</li>
+      <li>It uploads the ciphertext, the GCM tag, and the finder&rsquo;s ephemeral public key <span class="mono">p&prime;</span>. The report is indexed under <span class="mono">SHA-256(P<sub>i</sub>)</span>.</li>
+    </ol>
+    <p>Apple also states that finder uploads carry no authentication information in contents or headers, so Apple &ldquo;doesn&rsquo;t know who the finder is or whose device has been found,&rdquo; and does not keep information that would let someone correlate finder and owner.</p>
+    <p>Those AES-GCM / X9.63 / SHA-256 details are from the research reconstruction, not from Apple&rsquo;s consumer-facing security guide. They have been consistent across OpenHaystack and later implementations, but they should be read as &ldquo;this is how the closed protocol was shown to work,&rdquo; not as an Apple-authored spec quote.</p>
+    <h3>How the owner fetches and decrypts reports</h3>
+    <p>The owner&rsquo;s devices already have <span class="mono">d</span> and the SK chain, synced via iCloud Keychain. To look the tag up they:</p>
+    <ol>
+      <li>Advance the KDF to obtain every <span class="mono">(d<sub>i</sub>, P<sub>i</sub>)</span> that could have been advertised in the window of interest.</li>
+      <li>Query Apple&rsquo;s report service by the hashed key IDs <span class="mono">SHA-256(P<sub>i</sub>)</span>.</li>
+      <li>For each returned report, perform ECDH between their <span class="mono">d<sub>i</sub></span> and the finder&rsquo;s ephemeral public key <span class="mono">p&prime;</span>, re-derive the AES-GCM key and IV, and decrypt.</li>
+    </ol>
+    <p>The Find My app then shows the pin. The owner does not learn which iPhone, iPad, or Mac filed the report. Heinrich et al. also noted that reports are retained long enough to reconstruct recent history (they describe a seven-day window in their 2021 analysis); treat the exact retention interval as something that can change, and that Apple does not document in the security guide.</p>
+
+    <h3>Key rotation cadence and privacy</h3>
+    <p>Apple&rsquo;s platform security documentation says the advertised public key is replaced <strong>approximately every 15 minutes</strong>, by incrementing the counter and repeating the derivation above, &ldquo;so that the user can&rsquo;t be tracked by a persistent identifier.&rdquo;</p>
+    <p>The accessory specification also defines <em>primary</em> and <em>secondary</em> key sequences with different rotation intervals. The 15-minute primary sequence is what you want when the owner is around. Once the accessory has been in the separated state long enough to need crowd-sourced reports <em>and</em> to be detectable as an unknown tracker, a slower-rotating secondary key is used so a potential victim&rsquo;s phone can recognize &ldquo;the same tag is still with me&rdquo; across hours. Apple&rsquo;s own unwanted-tracking support page notes that if an item was with you overnight, &ldquo;its identifier might have changed,&rdquo; which is consistent with a daily rollover in that mode. Some secondary sources describe a 4:00 a.m. local-time switch; this page does not treat that clock time as verified, because the specification PDF was not re-read here.</p>
+    <p>That tension &mdash; rotate fast enough that a sniffer cannot trail you, rotate slowly enough that a stalking detector can correlate sightings &mdash; is the central privacy engineering problem of these tags, and it is why anti-stalking had to be designed in rather than bolted on as a phone-only heuristic.</p>
+
+    <figure class="figure" aria-label="Find My cryptography diagram">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>Master key on the owner device diversifies into rotating public keys; finders encrypt to Pi; owner queries SHA-256 of Pi and decrypts</title>
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b9bd5"/>
+          </marker>
+        </defs>
+        <rect x="20" y="40" width="200" height="90" rx="12" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="120" y="78" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">Owner master secret</text>
+        <text x="120" y="100" text-anchor="middle" fill="#999" font-family="ui-monospace,monospace" font-size="11">d, P, SK0  &mdash; iCloud Keychain</text>
+        <path d="M120 130 V160" stroke="#5b9bd5" stroke-width="1.6" fill="none"/>
+        <text x="128" y="152" fill="#5b9bd5" font-family="ui-monospace,monospace" font-size="11">every ~15 min</text>
+        <rect x="20" y="160" width="200" height="90" rx="12" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="120" y="198" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">Advertised Pi</text>
+        <text x="120" y="220" text-anchor="middle" fill="#999" font-family="ui-monospace,monospace" font-size="11">in BLE addr + payload</text>
+        <path d="M220 205 H310" stroke="#5b9bd5" stroke-width="1.6" fill="none" marker-end="url(#arrow2)"/>
+        <rect x="320" y="160" width="200" height="90" rx="12" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="420" y="198" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">Finder: ECDH + AES-GCM</text>
+        <text x="420" y="220" text-anchor="middle" fill="#999" font-family="ui-monospace,monospace" font-size="11">ephemeral p&prime;, upload report</text>
+        <path d="M520 205 H610" stroke="#5b9bd5" stroke-width="1.6" fill="none" marker-end="url(#arrow2)"/>
+        <rect x="620" y="160" width="240" height="90" rx="12" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="740" y="198" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">Apple index SHA-256(Pi)</text>
+        <text x="740" y="220" text-anchor="middle" fill="#999" font-family="-apple-system,sans-serif" font-size="11">ciphertext only; owner decrypts</text>
+        <rect x="320" y="40" width="540" height="90" rx="12" fill="#141a22" stroke="#2a3a4a"/>
+        <text x="590" y="78" text-anchor="middle" fill="#9ec0e0" font-family="-apple-system,sans-serif" font-size="13" font-weight="700">Owner already knows every Pi in the window</text>
+        <text x="590" y="100" text-anchor="middle" fill="#8aa0b8" font-family="-apple-system,sans-serif" font-size="12">queries hashed IDs, ECDH with p&prime;, AES-GCM decrypt, show the pin</text>
+      </svg>
+      <figcaption class="caption">Find My&rsquo;s privacy bet: Apple can store reports under a hash it cannot link to an account, and cannot decrypt without d<sub>i</sub>.</figcaption>
+    </figure>
+    <h3>UWB / U1 Precision Finding vs BLE RSSI</h3>
+    <p>AirTag has always had two close-range modes. BLE gets you &ldquo;the tag is around here, play a sound.&rdquo; <strong>Precision Finding</strong> uses Apple&rsquo;s Ultra Wideband chip &mdash; U1 on the 2021 AirTag, a second-generation UWB chip (the same generation Apple lists in the iPhone 17 lineup, iPhone Air, and recent Apple Watch Ultra / Series models) on the 2026 AirTag &mdash; to show distance and direction on a supported iPhone, and now on supported Apple Watch models as well.</p>
+    <p>Current AirTag (2nd generation, introduced 26 January 2026) claims an expanded Precision Finding range, &ldquo;up to 50 percent farther&rdquo; than the first generation, and a speaker that is 50 percent louder (hearable from up to twice as far, per Apple). Expanded Precision Finding works with AirTag (2nd generation) paired with iPhone Air or iPhone 15 or later, excluding iPhone 16e and iPhone 17e, and is subject to regional UWB restrictions. First-generation Precision Finding required iPhone 11 or later, excluding iPhone SE (2nd and 3rd generation) and, later, iPhone 16e. Apple does not publish a numeric ranging accuracy (no official &ldquo;&plusmn;10 cm&rdquo; figure). What it promises is on-screen distance and direction, plus haptics and audio.</p>
+
+    <h3>NFC lost mode</h3>
+    <p>AirTag includes NFC. Anyone with an NFC-capable phone can hold the phone near the white side of a found AirTag. That opens a web page with the tag&rsquo;s serial number and, if the owner has enabled Lost Mode and chosen to share it, contact information. Apple&rsquo;s support pages also note that the last four digits of the registered phone number may be shown, which can help you recognize an owner you already know. This is a deliberate exception to &ldquo;the tag should be mute to strangers&rdquo;: a found tag needs a way to be returned.</p>
+
+    <h3>Speaker</h3>
+    <p>There is a built-in speaker. The owner can play a sound from Find My when they are in BLE range. Separately, an AirTag that has been separated from its owner for a period of time will emit a sound when it is moved, so a person being followed has an acoustic cue even if they never see a phone alert. The 2nd-generation speaker is the louder one described above. Exact delay before the first unsolicited chirp is not a figure Apple puts on the tech-specs page, and it has changed over software releases, so this page does not quote a hours-and-minutes number.</p>
+
+    <h3>Battery</h3>
+    <p>User-replaceable <strong>CR2032</strong> coin cell, installed in the box. Apple&rsquo;s product page says AirTag &ldquo;works for more than a year&rdquo; on a standard battery, with a low-battery alert on the iPhone. The 2nd-generation tech-specs footnote says testing was done in December 2025 on preproduction units with iPhone 17 / 17 Pro / 17 Pro Max / iPhone Air, based on everyday play-sound and Precision Finding use. Actual life varies with use, temperature, and the replacement cell. The enclosure is rated IP67 (1 m for 30 minutes).</p>
+    <p>Price, from Apple&rsquo;s January 2026 introduction and the current AirTag store page: <strong>$29</strong> for one, <strong>$99</strong> for a four-pack, with free engraving on apple.com. First-generation AirTags were the same price; Apple no longer sells them directly.</p>
+  </section>
+  <section id="google">
+    <h2>Google Find Hub</h2>
+    <p>Android&rsquo;s crowd-sourced network shipped in 2024 as the <em>Find My Device network</em> and has since been rebranded <strong>Find Hub</strong>. The product is broader than tags: it also locates online Android devices, stores an encrypted last-seen location for your own phone and some accessories, and finds Fast Pair earbuds. The tag-relevant piece is the Find Hub Network (FHN), specified as a Fast Pair extension.</p>
+
+    <h3>The Fast Pair-based specification</h3>
+    <p>Certified locator tags implement Google&rsquo;s Fast Pair protocol for pairing, then the <a href="https://developers.google.com/nearby/fast-pair/specifications/extensions/fmdn">Find Hub Network Accessory Specification</a> for beaconing. The interesting keys, from that spec:</p>
+    <ul>
+      <li><strong>Ephemeral Identity Key (EIK)</strong> &mdash; a 32-byte key chosen at random by the owner&rsquo;s phone (the &ldquo;Seeker&rdquo;) during provisioning. It never goes to Google&rsquo;s backend. Location reports are end-to-end encrypted under keys derived from it.</li>
+      <li><strong>Recovery key</strong> &mdash; <span class="mono">SHA256(EIK || 0x01)</span>, truncated to 8 bytes, stored on the backend so the EIK can be recovered if the user proves possession of the tag (for example by pressing its button).</li>
+      <li>After provisioning, the tag advertises FHN frames at least once every two seconds, interleaved with Fast Pair advertisements if those are also on the air (the spec&rsquo;s example is seven Fast Pair frames and one FHN frame every two seconds).</li>
+    </ul>
+    <p>An FHN frame is BLE service data under UUID <span class="mono">0xFEAA</span>, with a frame type that also indicates unwanted-tracking-protection mode, a 20-byte (or 32-byte, for the larger curve) ephemeral identifier, and hashed flags. Two curves are defined, SECP160R1 and SECP256R1; ordinary tags use the 160-bit / 20-byte advertisement. Google&rsquo;s public privacy write-up adds that the E2E key is unlocked the same way Google Password Manager unlocks a vault: the owner&rsquo;s screen lock (PIN, pattern, or password). Until a lock is set, a phone can still help <em>other</em> people find items, but the owner does not get the full benefit of the network for their own stuff.</p>
+
+    <h3>Ephemeral IDs</h3>
+    <p>The advertised ephemeral ID is not a raw public key sitting in the PDU the way Find My&rsquo;s <span class="mono">P<sub>i</sub></span> is. The Provider computes a pseudorandom value by AES-ECB-256-encrypting a structured block with the EIK. That block includes a rotation-period exponent <span class="mono">K</span> and a 32-bit time counter in seconds with the <span class="mono">K</span> lowest bits cleared. The spec fixes <span class="mono">K = 10</span>, so the ID rotates every <strong>2<sup>10</sup> = 1024 seconds</strong> (about 17 minutes). The result is then mapped onto the chosen elliptic curve to produce the identifier that goes on the air and the keys used to encrypt location reports. A clock-value field exists so a Seeker can resynchronize after the tag&rsquo;s cheap clock has drifted.</p>
+
+    <h3>Aggregation by default, and &ldquo;all areas&rdquo;</h3>
+    <p>This is the sharpest product difference versus Apple. Google&rsquo;s April 2024 security-engineering post is blunt: <strong>aggregation is the default</strong>. The network waits until <em>multiple</em> nearby Android devices have detected the same tag, then shows the owner a single aggregated location. The idea is that Find Hub is most useful in busy public places (airports, cafes, sidewalks) and that requiring several finders makes it harder to use one compromised or lonely phone to trail someone to a private home.</p>
+    <p>Google also describes an &ldquo;at home protection&rdquo;: if the finder has a home address saved in their Google Account, their phone will not contribute crowdsourced reports when it is near that home. Rate limits cap how often one phone may report a given tag, and how often an owner may refresh a location, on the theory that a lost bag sits still and a stalker wants a live track.</p>
+    <p>Users can change participation under Find Hub&rsquo;s offline-finding settings:</p>
+    <ul>
+      <li><strong>Off</strong> &mdash; no network, no stored recent locations.</li>
+      <li><strong>Without network</strong> &mdash; the phone stores an encrypted last location for itself and connected accessories, but does not join the crowd and cannot use tags the same way.</li>
+      <li><strong>With network in busy places only</strong> &mdash; the default aggregation mode. Reports show up where several Android devices have seen the item.</li>
+      <li><strong>With network everywhere</strong> &mdash; the opt-in. A single participating phone can file a useful report, including in remote areas. This is the setting that makes a tag behave more like AirTag in the countryside.</li>
+    </ul>
+    <p>The practical consequence: a Find Hub tag in a quiet neighborhood, a trailhead, or a one-stoplight town may stay dark on the map unless enough nearby Android users have opted into &ldquo;everywhere.&rdquo; Apple does not impose a comparable multi-finder gate.</p>
+
+    <h3>Android&rsquo;s install base, versus Apple</h3>
+    <p>Google&rsquo;s Pixel Tag launch materials (August 2026) and the Google Store product page describe Find Hub as a crowdsourced network of <strong>over one billion Android devices</strong>. Apple&rsquo;s current AirTag page says Find My can &ldquo;leverage more than a billion iPhone, iPad, and Mac devices.&rdquo; The raw headlines are therefore in the same order of magnitude. The engineering differences still matter:</p>
+    <ul>
+      <li>Apple&rsquo;s finder population is relatively uniform (recent iOS, offline finding on by default, radios and location stacks that look alike). Google has to span many OEMs, and phones on Android 8 or lower cannot join the crowdsourced network at all.</li>
+      <li>Find Hub&rsquo;s default aggregation trades some rural and &ldquo;only one phone walked by&rdquo; coverage for a stalking-resistance property Apple implements with other tools (faster unwanted-tracking alerts, the tag speaker, identifier tricks in separated mode).</li>
+      <li>A lock screen is required for an Android owner to receive network locations for their own items. That is a real adoption filter.</li>
+    </ul>
+    <p>Google&rsquo;s first-party tag is the <strong>Pixel Tag</strong>, announced 12 August 2026 and put on sale from 11 November 2026: Fast Pair setup, BLE plus Ultra Wideband and Bluetooth Channel Sounding for precision finding, a user-replaceable CR2032 rated at over a year, IP67, a speaker, a button that rings your phone, sharing with up to 10 people. The Google Store listed a single Pixel Tag at <strong>$29.99</strong> on 16 November 2026; Google&rsquo;s August blog announced <strong>$29</strong> / <strong>$99</strong> for a four-pack at launch. Precision finding needs a compatible UWB Android phone; Channel Sounding, where advertised, is a Bluetooth 6.0 feature and needs a phone that supports it.</p>
+  </section>
+  <section id="third">
+    <h2>Third-party tags</h2>
+
+    <h3>Find My&ndash;certified (MFi) versus Find Hub&ndash;certified</h3>
+    <p>A third party that wants its tag to show up in Apple&rsquo;s Find My app must enroll in the <strong>MFi Program</strong> and use the Find My Network Accessory Program. Apple&rsquo;s developer page is explicit: you enroll in MFi &ldquo;to access the technical specifications and resources needed to create your product.&rdquo; Certified accessories implement the advertisement format, key agreement, lost-mode behavior, and unwanted-tracking requirements Apple specifies. They appear in Find My as Items, not in a vendor app, for the actual map pin.</p>
+    <p>A Find Hub&ndash;certified tag implements Fast Pair plus the FHN accessory specification, is provisioned from an Android phone (Android 9 or later with Play Services, in countries where the network is offered), and is located in the Find Hub app. Google publishes the FHN spec openly, which is a real difference from Apple&rsquo;s MFi-gated document.</p>
+
+    <h3>Dual-network tags, and whether both can run at once</h3>
+    <p>Several 2025&ndash;2026 tags &mdash; Chipolo&rsquo;s POP, LOOP, and CARD, and Pebblebee&rsquo;s comparable &ldquo;universal&rdquo; clips &mdash; can be <em>paired to either</em> Find My or Find Hub. Chipolo&rsquo;s official FAQ is unambiguous: they do <strong>not</strong> work on both networks at the same time. &ldquo;Using both networks simultaneously isn&rsquo;t possible due to Apple and Google policies and inherent incompatibility between Apple Find My and Find Hub.&rdquo; To switch, you remove the tag from the current network (and from the Chipolo companion app) and pair it again on the other. That matches what you would expect from the radio work: the two advertisements, key schedules, and owner-provisioning flows are different, and neither vendor has offered a mode that interleaves both beacon formats as a single registered item.</p>
+    <p>Older Chipolo models were single-network by design (for example ONE Spot is Find My only). A dual-network SKU is a hardware and firmware capability, not a simultaneous roaming membership.</p>
+
+    <h3>Proprietary-network tags: Tile, and Chipolo&rsquo;s own app</h3>
+    <p>Before Apple and Google opened their phone fleets, Tile built a parallel crowd: any phone with the Tile (now Life360) app running would anonymously update the last-seen location of a stranger&rsquo;s Tile. Life360, which acquired Tile, still operates that <strong>Tile Network</strong>. Life360&rsquo;s support page says that when you are in range of another Tile, your app &ldquo;will automatically (and anonymously) update the location of that Tile on the owner&rsquo;s account.&rdquo; You cannot see other people&rsquo;s Tiles; they cannot see yours. The company says location updates are encrypted and that no personal data is shared in that process.</p>
+    <p>The coverage of a proprietary network is the installed base of that one app, not &ldquo;every iPhone&rdquo; or &ldquo;every participating Android.&rdquo; That is Tile&rsquo;s structural disadvantage against AirTag and Find Hub, and the reason many later competitors chose certification instead of standing up their own crowd. Life360 does fold Tiles into the same map as family location sharing, which is a product advantage Apple and Google do not try to copy one-for-one. Some Tile features (for example Smart Alerts when you leave a tagged item behind) are part of a paid Life360 membership.</p>
+    <p>Chipolo is a useful contrast: the map pin lives in Find My or Find Hub, and the Chipolo companion app is only for extras (ring your phone, change the ringtone, out-of-range alerts, a shutter button). The crowd is Apple&rsquo;s or Google&rsquo;s; the vendor app is a settings panel.</p>
+
+    <h3>Where the Amazon product fits</h3>
+    <p>The linked <strong>Life360 Tile, model T1801A</strong>, is a 2024 Tile Mate on the proprietary Tile / Life360 network. It is aimed at both iOS and Android, but through the Life360 app, not through Find My or Find Hub. Official Life360 specs for the 2024 Mate: 37.6 &times; 37.6 &times; 7.4 mm, 8 g, up to 350 ft, 100 dB, IP68, 3-year <em>non-replaceable</em> battery, SOS-capable, QR code on the back for a found-tag flow. There is no UWB radio and therefore no Precision Finding. If you want a replaceable cell in the current Tile line, that is the Tile Pro (T1701), not this Mate.</p>
+  </section>
+  <section id="dult">
+    <h2>Anti-stalking and DULT</h2>
+    <p>A tag that can be found by a billion phones can also be dropped in a bag. Apple and Google jointly wrote an industry specification, <strong>Detecting Unwanted Location Trackers (DULT)</strong>, and submitted it to the IETF. It is still an Internet-Draft, not an RFC. The working group and the current accessory-protocol draft (<span class="mono">draft-ietf-dult-accessory-protocol</span>, authors at Apple and Google, update 27 October 2026) describe best practices so that a tracker is recognizable to both iOS and Android when it is traveling with someone who is not its owner.</p>
+    <p>Platform support landed ahead of a finished RFC. Apple&rsquo;s 13 May 2024 newsroom post, and the matching Android rollout, say that starting with <strong>iOS 17.5</strong> and <strong>Android 6.0+</strong>, a user can get an &ldquo;[Item] Found Moving With You&rdquo; alert if an unknown compatible Bluetooth tracker is seen moving with them over time, regardless of which platform the tag was paired to. Compatible manufacturers named at the time included Chipolo, eufy, Jio, Motorola, and Pebblebee. The alert path lets the person view an identifier, play a sound, and get instructions to disable the tracker. Apple had already shipped AirTag-specific alerts earlier; DULT is the cross-platform version.</p>
+
+    <h3>Separated-mode behavior</h3>
+    <p>Unwanted-tracking detection only works if the phone can tell that advertisements over a span of minutes to hours are the same physical tag, and if the tag will actually answer a non-owner who is trying to find or disable it. That is what &ldquo;separated&rdquo; or &ldquo;near-owner / separated&rdquo; mode is for. While the owner&rsquo;s phone is nearby, the tag should not look like a stalker to the people sitting next to you on a train. Once the owner is gone, the tag:</p>
+    <ul>
+      <li>advertises in a way that other phones can classify as a location-tracker accessory in the separated state,</li>
+      <li>keeps an identifier stable enough, for long enough, that &ldquo;moving with you&rdquo; can be detected (this is the slower secondary-key idea on Find My, and the unwanted-tracking-protection mode bit on FHN frames),</li>
+      <li>can play a sound when a potential victim requests it,</li>
+      <li>and, after a long enough separation, may play a sound on its own when moved, even if no one has opened an alert.</li>
+    </ul>
+    <p>Apple&rsquo;s support document is the most detailed public description of the user-facing side: map of where the unknown item was seen with you, Play Sound, Precision Finding to hunt an unknown AirTag on a UWB iPhone, NFC to read serial and partial phone number, and &ldquo;Instructions to Disable.&rdquo; Turning off Bluetooth or Find My on <em>your</em> phone does not stop the owner from getting location updates; the tag itself has to be disabled. Android 6.0+ can alert automatically; people can also run a manual scan, and Apple still publishes the older Tracker Detect Android app for scanning Apple-network tags.</p>
+
+    <h3>What about Tile?</h3>
+    <p>Life360&rsquo;s published guidance for unwanted tracking is its own <strong>Scan and Secure</strong> feature in the Tile app (usable even without a Tile account). It looks for nearby Tiles and Tile-enabled devices. Life360 is explicit about a gap: Scan and Secure will <em>not</em> detect a Tile that is in Anti-Theft Mode, and it will not detect other brands&rsquo; trackers. If a Tile is in Anti-Theft Mode, Life360 says law enforcement can get owner information with a court order, and their care team can help a person who believes they are being tracked that way.</p>
+    <p>This page has not verified that current Life360 Tiles participate in the iOS / Android system-level DULT alerts the way a Find My or Find Hub accessory does. Life360&rsquo;s own documentation points at the Tile app, not at those system alerts. Tile expressed support for the draft industry specification in 2023; support is not the same thing as shipping compatible advertisements. If you are evaluating T1801A as a personal-safety matter, do not assume a bystander&rsquo;s iPhone or Pixel will pop a system unknown-tracker banner the way it would for an AirTag or Pixel Tag.</p>
+  </section>
+
+  <section id="precision">
+    <h2>Precision finding: UWB vs BLE RSSI</h2>
+    <p>These are different measurements, and it is worth not blurring them.</p>
+    <ul>
+      <li><strong>BLE RSSI</strong> is received signal strength. It is a coarse, highly environmental proxy for distance: bodies, bags, orientation, and 2.4 GHz fading move it around. It has no native angle. &ldquo;Play sound and walk toward the louder chirp,&rdquo; or a hot/cold ring in an app, is what RSSI is good for. Every tag in this page can do some version of that, because every tag has BLE.</li>
+      <li><strong>Ultra Wideband</strong> (IEEE 802.15.4z-style ranging, in Apple&rsquo;s case with the U1 / second-generation UWB chip, and in Google&rsquo;s Pixel Tag with a UWB radio plus optional Bluetooth Channel Sounding) measures time of flight and, with a multi-antenna phone, angle of arrival. The phone can draw an arrow and a distance. This is Precision Finding. It only works when both ends have UWB (or, for Channel Sounding, a phone and tag that both implement that BLE 6 feature) and when local radio rules allow UWB.</li>
+    </ul>
+    <p>Apple describes Precision Finding as showing &ldquo;the exact distance and direction.&rdquo; The Google Store describes Pixel Tag guidance as &ldquo;meter-by-meter.&rdquo; Neither company publishes a calibrated accuracy (no official centimeter or meter error bar). Academic and industry UWB two-way-ranging results are often in the decimeter-or-better range in clear conditions, but that is typical UWB behavior, not an AirTag or Pixel Tag datasheet claim, so it is not used as a product number here.</p>
+    <p>Practical limits that do have official footnotes: AirTag Precision Finding is iPhone- and now Apple Watch-model specific and region-restricted; Pixel Tag UWB precision finding &ldquo;requires a compatible Android device with Ultra Wideband support,&rdquo; and Motorola&rsquo;s moto tag 2 documentation similarly requires a UWB Android 9+ phone, with Channel Sounding called out as needing a Bluetooth 6.0 phone on Android 16+. A tag without UWB (Chipolo POP, Life360 Tile Mate T1801A) cannot do this trick, no matter how good the crowd-sourced map pin is.</p>
+
+    <figure class="figure" aria-label="UWB versus RSSI">
+      <svg viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" role="img">
+        <title>BLE RSSI gives a fuzzy distance ring; UWB gives distance and direction</title>
+        <defs>
+          <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b9bd5"/>
+          </marker>
+        </defs>
+        <rect x="20" y="20" width="410" height="170" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="225" y="48" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="14" font-weight="700">BLE RSSI</text>
+        <circle cx="160" cy="115" r="48" fill="none" stroke="#3a4a5a" stroke-width="8" opacity="0.9"/>
+        <circle cx="160" cy="115" r="30" fill="none" stroke="#3a4a5a" stroke-width="14" opacity="0.45"/>
+        <circle cx="160" cy="115" r="6" fill="#5b9bd5"/>
+        <text x="300" y="100" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">coarse ring</text>
+        <text x="300" y="118" fill="#777" font-family="-apple-system,sans-serif" font-size="12">no angle</text>
+        <text x="300" y="136" fill="#777" font-family="-apple-system,sans-serif" font-size="12">play a sound, hunt</text>
+        <rect x="450" y="20" width="410" height="170" rx="14" fill="#1a1a1a" stroke="#3a3a3a"/>
+        <text x="655" y="48" text-anchor="middle" fill="#5b9bd5" font-family="-apple-system,sans-serif" font-size="14" font-weight="700">UWB precision finding</text>
+        <circle cx="560" cy="120" r="6" fill="#5b9bd5"/>
+        <path d="M568 114 L700 70" stroke="#5b9bd5" stroke-width="2" fill="none" marker-end="url(#arrow3)"/>
+        <text x="720" y="74" fill="#aaa" font-family="-apple-system,sans-serif" font-size="12">direction</text>
+        <text x="630" y="130" fill="#aaa" font-family="ui-monospace,monospace" font-size="11">ToF + AoA</text>
+        <text x="630" y="148" fill="#777" font-family="-apple-system,sans-serif" font-size="12">distance on screen</text>
+      </svg>
+      <figcaption class="caption">RSSI is a messy power measurement. UWB is a timing measurement, plus angle if the phone has a multi-antenna UWB array.</figcaption>
+    </figure>
+  </section>
+  <section id="compare">
+    <h2>Comparison</h2>
+    <p>Four products, chosen so the Amazon link sits next to the two first-party tags and a dual-network third party. The linked item <em>is</em> a Tile, so a second generic &ldquo;Tile&rdquo; column would have been a duplicate.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Apple AirTag (2nd gen, 2026)</th>
+            <th>Google Pixel Tag</th>
+            <th>Chipolo POP</th>
+            <th>Life360 Tile Mate (T1801A)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Network</td>
+            <td>Apple Find My</td>
+            <td>Google Find Hub</td>
+            <td>Find My <em>or</em> Find Hub, one at a time; extras in the Chipolo app</td>
+            <td>Life360 Tile Network (proprietary). This is the Amazon link.</td>
+          </tr>
+          <tr>
+            <td>Radios</td>
+            <td>BLE; second-generation Apple UWB; NFC for Lost Mode</td>
+            <td>BLE; UWB; Bluetooth Channel Sounding</td>
+            <td>BLE only (official pages do not list UWB or NFC)</td>
+            <td>BLE only; QR code on the back for a found-tag flow</td>
+          </tr>
+          <tr>
+            <td>Precision finding</td>
+            <td>Yes, on supported iPhone and Apple Watch, where UWB is allowed. Apple describes distance and direction; no official error bar.</td>
+            <td>Yes, on a compatible UWB Android phone. Google Store: &ldquo;meter-by-meter.&rdquo; Channel Sounding is additional, phone-dependent.</td>
+            <td>No. Ring + map pin + RSSI-style hunting.</td>
+            <td>No. Ring in the Life360 app + last-seen map pin.</td>
+          </tr>
+          <tr>
+            <td>Battery</td>
+            <td>User-replaceable CR2032, more than a year (Apple)</td>
+            <td>User-replaceable CR2032, over one year (Google Store)</td>
+            <td>User-replaceable CR2032, up to one year (Chipolo)</td>
+            <td>Sealed, non-replaceable, up to 3 years (Life360, 2024 Mate)</td>
+          </tr>
+          <tr>
+            <td>Anti-stalking</td>
+            <td>System unknown-tracker alerts on iOS and Android; speaker when separated and moved; NFC identity; disable instructions</td>
+            <td>Find Hub / DULT-style unknown-tracker alerts; Google describes aggregation, at-home protection, and rate limits on the network itself</td>
+            <td>Ships as a Find My / Find Hub accessory; Chipolo was a named DULT-committed manufacturer. One-network-at-a-time still participates in that network&rsquo;s alerts.</td>
+            <td>Tile app Scan and Secure. Does not detect Anti-Theft Mode Tiles or other brands. System-level DULT alerts not verified for this model.</td>
+          </tr>
+          <tr>
+            <td>Price (verified where possible)</td>
+            <td>$29 each, $99 for a 4-pack (Apple, Jan 2026 introduction and current storefront)</td>
+            <td>$29.99 on the Google Store as of 16 Nov 2026. Google&rsquo;s Aug 2026 blog announced $29 / $99 4-pack from 11 Nov 2026.</td>
+            <td>$29 at launch, April 2025 (TechCrunch, citing Chipolo). Current list price was not re-verified on chipolo.net this turn.</td>
+            <td>$79.24 for the 4-pack on Amazon as of 16 Nov 2026 (listing also referenced a $99.99 list). Per-tag list-equivalent is about $20&ndash;$25 if that snapshot holds.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Other Find Hub tags exist &mdash; Motorola&rsquo;s moto tag 2, for example, advertises UWB, Channel Sounding, a replaceable CR2032, a &ldquo;over 600 days&rdquo; battery claim, IP68, and unknown-tracker alerts. Its official US list price was not captured cleanly from Motorola&rsquo;s site this turn, so it is not in the table.</p>
+  </section>
+  <section id="diy">
+    <h2>DIY and research tools</h2>
+    <p>Because both networks are, at the radio layer, just BLE advertisements plus an owner who can fetch ciphertext, researchers have built unofficial beacons that participating phones will treat as lost accessories. That is scientifically interesting and legally sharp-edged.</p>
+
+    <div class="warn">
+      <strong>Ethical and legal caveats, up front.</strong> Using a location tag to follow a person without their consent is a crime in many places; Apple says so plainly, and it is true of unofficial beacons too. Putting a silent Find My or Find Hub advertiser into something another person might carry, or leaving one in public without the unwanted-tracking behavior DULT exists to require (stable-enough separated identifiers, play-sound for a non-owner, a way to disable), is how these systems get people hurt. Using Apple&rsquo;s or Google&rsquo;s report services from unofficial clients can also violate their terms of service. This section describes what published research tools are, not how to deploy a covert tracker. Do not flash a beacon onto anything you do not own, and do not use one to locate a person.
+    </div>
+
+    <h3>OpenHaystack and macless-haystack</h3>
+    <p><a href="https://github.com/seemoo-lab/openhaystack">OpenHaystack</a> is the TU Darmstadt / SEEMOO lab framework that came out of the 2021 PETS analysis. A Mac app generates P-224 key pairs, firmware on a BBC micro:bit (nRF51), an ESP32, or a Linux HCI device advertises a Find My&ndash;style payload, nearby iPhones upload reports exactly as they would for an AirTag, and the Mac fetches and decrypts them. Fetching originally depended on an Apple Mail plugin that inherited Mail&rsquo;s entitlements to talk to a private Apple API, which is why the install docs walk through Gatekeeper. The authors themselves warn that their sample firmware broadcast a <em>fixed</em> public key and was therefore trackable by anyone in proximity &mdash; the opposite of AirTag&rsquo;s 15-minute rotation. OpenHaystack is experimental, incomplete, and not affiliated with Apple.</p>
+    <p><a href="https://github.com/dchristl/macless-haystack">macless-haystack</a> is a later project that removes the need to own a Mac: key generation in Python, ESP32 or nRF5x firmware, a Dockerized endpoint that talks to an anisette server and an Apple ID (with 2FA), and a web or Android UI to import devices and plot reports. It composes OpenHaystack, Biemster&rsquo;s FindMy, and other firmware work. The README is explicit that it is for education and research, and that the author takes no responsibility for how the code is used.</p>
+    <p>Together they demonstrate a fact that matters to an embedded engineer: <strong>the crowd does not authenticate the tag.</strong> A correctly shaped BLE advertisement with a key the owner can still derive is enough for passing iPhones to file a report. Certification, DULT behavior, and rotating keys are policy and safety layers, not a cryptographic admission control on the finder side.</p>
+
+    <h3>Research on the Google network</h3>
+    <p><a href="https://github.com/leonboe1/GoogleFindMyTools">GoogleFindMyTools</a> (leonboe1) is an experimental reimplementation of parts of Find Hub. The README says it can query Find Hub trackers and Android devices, read out E2EE keys, decrypt network locations, and register custom ESP32 or Zephyr (nRF51/52) trackers with a Google account. Unlike OpenHaystack&rsquo;s advertise-and-harvest approach, Google&rsquo;s side requires a provisioned EIK and an account relationship; unofficial registration tools are looking at that provisioning path, not only at the advertisement format. Other public research (for example write-ups around fhn-beacon-tools and lab notes on rate limits and unregistered keys) suggests Google is stricter than Apple about who may insert a new beacon identity. This page does not treat those hardening details as fully mapped.</p>
+
+    <h3>What this means for ESP32 / nRF52 work, including the juggle balls</h3>
+    <p>The XIAO nRF52840 used on the smart juggle balls is a perfectly capable BLE 5 SoC. It can transmit the kinds of advertisements these protocols use; OpenHaystack-style and Zephyr FHN firmwares have already been aimed at the nRF52 family. It has no UWB radio, so Precision Finding is off the table. A CR2032- or LiPo-powered 52840 can beacon for a long time at AirTag-like advertising intervals.</p>
+    <p>That does not make &ldquo;put Find My on the juggle balls&rdquo; a good or clean project. A ball that rolls under a bleacher is an appealing demo for crowd-sourced finding, but:</p>
+    <ul>
+      <li>An unofficial advertisement will not be a licensed MFi / Find My accessory or a certified FHN tag.</li>
+      <li>If the firmware uses a fixed key, anyone who records the advertisement can later try to request reports if they also have a way to satisfy Apple&rsquo;s or Google&rsquo;s fetch authentication &mdash; and, more simply, they can trail the ball locally by BLE. Rotating keys means you have to store and advance the same KDF the official tags do, on a cheap clock, across resets.</li>
+      <li>If a ball (or a backpack, keychain, dog collar) can leave your immediate control and travel with someone else, DULT-style separated-mode behavior is the ethical minimum, and in many jurisdictions the legal one, for anything that is recognizably a location tracker.</li>
+      <li>The interesting <em>legitimate</em> embedded paths are closer to: a first-party map that uses your own phones as finders; a clearly owned research beacon on a bench, with rotating keys and a chirp; or, if you ever wanted a product, actually going through MFi or Find Hub certification.</li>
+    </ul>
+    <p>For the juggle-ball hardware specifically, BLE proximity between the balls and a phone you carry is already a more honest architecture than borrowing Apple&rsquo;s or Google&rsquo;s crowd. Use the official networks only with eyes open about terms of service, and never as a way to locate a person.</p>
+  </section>
+  <section id="sources" class="sources">
+    <h2>Sources</h2>
+    <ol>
+      <li>Amazon listing for the linked product (Life360 Tile 4-pack, T1801A, ASIN B0F2TQBG6T): <a href="https://www.amazon.com/dp/B0F2TQBG6T">https://www.amazon.com/dp/B0F2TQBG6T</a>, resolved from <a href="https://a.co/d/0eiOK3sI">https://a.co/d/0eiOK3sI</a>. Price snapshot 16 Nov 2026.</li>
+      <li>Life360, Tile Models (2024 Mate = T1801, 350 ft, 100 dB, 3-year non-replaceable, IP68): <a href="https://support.life360.com/hc/en-us/articles/30583020129047-Tile-Models">https://support.life360.com/hc/en-us/articles/30583020129047-Tile-Models</a></li>
+      <li>Life360, Tile Network: <a href="https://support.life360.com/hc/en-us/articles/30583038024855-Tile-Network">https://support.life360.com/hc/en-us/articles/30583038024855-Tile-Network</a></li>
+      <li>Life360, How to Handle Unwanted Tracking (Scan and Secure, Anti-Theft Mode gap): <a href="https://support.life360.com/hc/en-us/articles/30582987898135-How-to-Handle-Unwanted-Tracking">https://support.life360.com/hc/en-us/articles/30582987898135-How-to-Handle-Unwanted-Tracking</a></li>
+      <li>Life360, Replace a Tile Battery / Tile Battery Life: <a href="https://support.life360.com/hc/en-us/articles/30583012507159-Replace-a-Tile-Battery">replaceable-battery models</a>, <a href="https://support.life360.com/hc/en-us/articles/30582984539799-Tile-Battery-Life">battery-life policy</a></li>
+      <li>Apple Platform Security, Find My security (P-224, SK chain, 15-minute rotation, E2E, anonymity): <a href="https://support.apple.com/guide/security/find-my-security-sec6cbc80fd0/web">https://support.apple.com/guide/security/find-my-security-sec6cbc80fd0/web</a></li>
+      <li>Heinrich, Stute, Kornhuber, Hollick, &ldquo;Who Can Find My Devices?&rdquo;, PETS 2021 (advertisement layout, AES-GCM / X9.63, SHA-256 key IDs): <a href="https://arxiv.org/abs/2103.02282">https://arxiv.org/abs/2103.02282</a> and <a href="https://doi.org/10.2478/popets-2021-0045">doi:10.2478/popets-2021-0045</a></li>
+      <li>Apple, Find My Network developer page (MFi enrollment for third-party accessories): <a href="https://developer.apple.com/find-my/">https://developer.apple.com/find-my/</a></li>
+      <li>Apple, AirTag (2nd generation) tech specs: <a href="https://support.apple.com/en-us/126203">https://support.apple.com/en-us/126203</a></li>
+      <li>Apple, AirTag product page (price, &ldquo;more than a billion&rdquo; devices, NFC Lost Mode, battery &ldquo;more than a year,&rdquo; unwanted-tracking description): <a href="https://www.apple.com/airtag/">https://www.apple.com/airtag/</a></li>
+      <li>Apple Newsroom, 26 Jan 2026, second-generation AirTag ($29 / $99, louder speaker, expanded Precision Finding): <a href="https://www.apple.com/newsroom/2026/01/apple-introduces-new-airtag-with-expanded-range-and-improved-findability/">newsroom post</a></li>
+      <li>Apple Support, AirTag (1st generation) tech specs, for the earlier U1 / iPhone-compatibility footnotes: <a href="https://support.apple.com/en-us/111847">https://support.apple.com/en-us/111847</a></li>
+      <li>Apple Support, unwanted tracking alerts (iOS 17.5, play sound, disable, identifier may change overnight): <a href="https://support.apple.com/en-us/119874">https://support.apple.com/en-us/119874</a></li>
+      <li>Apple Newsroom, 13 May 2024, Apple and Google unwanted-tracking alerts: <a href="https://www.apple.com/newsroom/2024/05/apple-and-google-deliver-support-for-unwanted-tracking-alerts-in-ios-and-android/">newsroom post</a></li>
+      <li>IETF DULT working group: <a href="https://datatracker.ietf.org/wg/dult/documents/">https://datatracker.ietf.org/wg/dult/documents/</a></li>
+      <li>IETF draft, Detecting Unwanted Location Trackers Accessory Protocol (draft-ietf-dult-accessory-protocol-01, 27 Oct 2026): <a href="https://datatracker.ietf.org/doc/draft-ietf-dult-accessory-protocol/">datatracker</a></li>
+      <li>Google, Find Hub Network Accessory Specification (EIK, EID, K=10 / 1024 s, frame format): <a href="https://developers.google.com/nearby/fast-pair/specifications/extensions/fmdn">developers.google.com/.../fmdn</a></li>
+      <li>Google, &ldquo;How Find Hub protects your data&rdquo; (E2E, participation modes, aggregation, lock-screen requirement): <a href="https://support.google.com/product-documentation/answer/14796936">https://support.google.com/product-documentation/answer/14796936</a></li>
+      <li>Google Security Blog, 8 Apr 2024, &ldquo;aggregation by default,&rdquo; at-home protection, rate limits, &ldquo;over a billion&rdquo; Android devices (post title now uses Find Hub): <a href="https://security.googleblog.com/2024/04/find-my-device-network-security-privacy-protections.html">security.googleblog.com/...</a></li>
+      <li>Google, Pixel Tag announcement, 12 Aug 2026 (sale from 11 Nov 2026, $29 / $99 4-pack, UWB + Channel Sounding, &ldquo;over one billion&rdquo; Android devices): <a href="https://blog.google/products-and-platforms/devices/pixel/google-pixel-tag/">blog.google/...</a></li>
+      <li>Google Store, Pixel Tag ($29.99 snapshot 16 Nov 2026, CR2032, IP67, UWB, Channel Sounding): <a href="https://store.google.com/us/product/pixel_tag?hl=en-US">store.google.com/us/product/pixel_tag</a></li>
+      <li>Chipolo POP official product page (dual network but not simultaneous, CR2032, IP55, 90 m, no UWB claimed): <a href="https://chipolo.net/en-us/products/chipolo-pop">https://chipolo.net/en-us/products/chipolo-pop</a></li>
+      <li>TechCrunch, 14 Apr 2025, Chipolo POP launch price $29: <a href="https://techcrunch.com/2025/04/14/chipolos-newest-airtag-competitor-works-with-both-apple-and-googles-finding-networks/">techcrunch.com/...</a></li>
+      <li>Motorola, moto tag 2 (UWB, Channel Sounding, CR2032, &ldquo;over 600 days,&rdquo; unknown-tracker alerts): <a href="https://www.motorola.com/us/en/p/motoaccessories/moto-tag-2/pg38c08032">motorola.com/.../moto-tag-2</a></li>
+      <li>OpenHaystack: <a href="https://github.com/seemoo-lab/openhaystack">https://github.com/seemoo-lab/openhaystack</a></li>
+      <li>macless-haystack: <a href="https://github.com/dchristl/macless-haystack">https://github.com/dchristl/macless-haystack</a></li>
+      <li>GoogleFindMyTools: <a href="https://github.com/leonboe1/GoogleFindMyTools">https://github.com/leonboe1/GoogleFindMyTools</a></li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>This page is a self-contained explainer in the webartests <span class="mono">embedded/</span> tree. It does not modify the folder index. Prices and software behavior change; check the cited primary pages before making a purchase or a safety decision.</p>
+  </footer>
+</div>
+</body>
+</html>
