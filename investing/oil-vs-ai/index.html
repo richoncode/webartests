@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Oil vs AI — Investing — webartests</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0d0d0d; }
+  body {
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 28px 16px 32px;
+  }
+  a.back {
+    display: inline-block;
+    margin-bottom: 18px;
+    color: #555;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  a.back:hover { color: #aaa; }
+  .scene { max-width: 1080px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 16px;
+  }
+  .kicker {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #5b9bd5;
+    margin-bottom: 4px;
+  }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.1; }
+  .lede {
+    max-width: 340px;
+    margin: 0;
+    text-align: right;
+    color: #aaa;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .diagram { position: relative; }
+  canvas#flow {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    background: transparent;
+    display: block;
+  }
+
+  .cols, .lanes, .analogs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    position: relative;
+    z-index: 1;
+  }
+  .cols { margin-bottom: 4px; }
+  .cols span {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+  }
+  .analogs { margin: 8px 0 2px; }
+  .analogs span {
+    text-align: center;
+    color: #777;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .rowhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 8px;
+    position: relative;
+    z-index: 1;
+  }
+  .rowtitle { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    align-self: center;
+    flex: none;
+  }
+  .rowtitle strong { font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
+  .rowsub { color: #999; font-size: 12px; line-height: 1.35; }
+
+  .gauge { display: flex; align-items: center; gap: 8px; flex: none; }
+  .gauge-label { font-size: 11px; font-weight: 700; color: #f0a040; min-width: 58px; }
+  .gauge-label.right { text-align: right; }
+  .gauge-track {
+    position: relative;
+    width: 112px;
+    height: 4px;
+    border-radius: 99px;
+    background: #2a241c;
+  }
+  .gauge-bead {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ffd27a;
+    box-shadow: 0 0 10px #f0a040;
+    transform: translate(-50%, -50%);
+  }
+  .now {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffb0a4;
+    flex: none;
+  }
+  .now-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ff5a3c;
+    box-shadow: 0 0 10px #ff5a3c;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.75; }
+    50% { transform: scale(1.35); opacity: 1; }
+  }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    min-height: 124px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    background: transparent;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .stage-body {
+    flex: 1 1 auto;
+    background: #161616;
+    border-top: 3px solid var(--bar);
+    border-radius: 13px 13px 0 0;
+    padding: 9px 9px 8px;
+    min-height: 78px;
+  }
+  .stage h2 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin-bottom: 3px;
+  }
+  .sub { color: #bdbdbd; font-size: 12px; line-height: 1.35; }
+  .pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .pill {
+    font-size: 10px;
+    font-weight: 700;
+    color: #f2f2f2;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 1px 6px;
+    line-height: 1.5;
+  }
+  .pill i { font-style: normal; color: #9fd0ff; font-weight: 650; margin-left: 4px; }
+  .note {
+    display: block;
+    min-height: 1.2em;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #ffb15a;
+  }
+  .chain-ai .note { color: #ff9b8a; }
+  .note.dim { color: #8ec8ff; font-weight: 600; }
+  .groove { height: 36px; flex: 0 0 36px; background: transparent; }
+
+  .stage.is-hot { border-color: rgba(255, 150, 70, 0.9); }
+  .chain-oil .stage.is-hot { box-shadow: 0 0 18px rgba(240, 160, 64, 0.22); }
+  .chain-ai .stage.is-hot {
+    border-color: rgba(255, 90, 60, 0.95);
+    box-shadow: 0 0 20px rgba(255, 80, 50, 0.28);
+  }
+  .chain-ai .stage.is-hot .stage-body { animation: fabBar 2.6s ease-in-out infinite; }
+  @keyframes fabBar {
+    0%, 100% { border-top-color: #2ec5ff; }
+    50% { border-top-color: #ff5a3c; }
+  }
+
+  .ticker {
+    margin-top: 16px;
+    overflow: hidden;
+    border-top: 1px solid #242424;
+    border-bottom: 1px solid #242424;
+    padding: 8px 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  }
+  .ticker-track {
+    display: flex;
+    width: max-content;
+    animation: ticker 48s linear infinite;
+  }
+  .ticker-seq {
+    white-space: nowrap;
+    font-size: 13px;
+    color: #c8c8c8;
+  }
+  .ticker-seq b { color: #fff; font-weight: 700; }
+  @keyframes ticker {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  .caption {
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #dedede;
+    max-width: 78ch;
+  }
+  .caption strong { color: #fff; }
+  .fine { display: block; margin-top: 4px; color: #777; font-size: 12px; }
+
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 720px) {
+    h1 { font-size: 24px; }
+    header { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .lede { text-align: left; max-width: none; }
+    .rowhead { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .cols span { font-size: 9px; letter-spacing: 0.04em; }
+    .stage { min-height: 112px; border-radius: 10px; }
+    .stage-body { min-height: 70px; padding: 7px 6px 6px; }
+    .stage h2 { font-size: 11px; }
+    .sub { font-size: 10px; }
+    .note { font-size: 10px; }
+    .pill { font-size: 8px; padding: 0 4px; }
+    .groove { height: 28px; flex-basis: 28px; }
+    .gauge-track { width: 72px; }
+    .gauge-label { min-width: 0; font-size: 10px; }
+    .rowsub { font-size: 11px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ticker-track { animation-duration: 160s; }
+    .now-dot { animation-duration: 8s; }
+    .chain-ai .stage.is-hot .stage-body { animation-duration: 8s; }
+  }
+</style>
+</head>
+<body>
+  <a class="back" href="../">← Back</a>
+  <main class="scene">
+    <header>
+      <div>
+        <p class="kicker">Supply chains</p>
+        <h1>Oil and AI</h1>
+      </div>
+      <p class="lede">Two chains flow left to right, stage for stage. The narrow pipe is the constraint.</p>
+    </header>
+
+    <p class="sr">Petroleum flows from oil companies through refineries and refining recipes to gasoline, diesel, jet fuel, and plastics. Historically the binding constraint was drilling, and at another time it was refining capacity. AI flows from chip companies NVIDIA and AMD, through fabs TSMC and Rapidus in Japan, through AI models as the recipes, to chips as the products. Today the binding constraint is chip fab hardware: long lead times to build and bring new fab capacity online. Demand and competition for supply are not the biggest factor.</p>
+
+    <div class="diagram" id="diagram">
+      <canvas id="flow" width="800" height="480" aria-hidden="true"></canvas>
+      <div class="cols" id="cols"></div>
+      <div id="mount"></div>
+    </div>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track" id="ticker"></div>
+    </div>
+
+    <p class="caption">
+      <strong>Biggest factor today: fab capacity coming online.</strong>
+      New fabs take years to build. Demand and competition for supply are not the biggest factor.
+      <span class="fine">Industry structure, not a recommendation.</span>
+    </p>
+  </main>
+
+<script>
+(function () {
+  var COLS = ["Companies", "Plant tech", "Recipes", "Products"];
+
+  /*
+   * Two aligned chains. bottleneck "shift" eases between stage indexes
+   * `from` and `to`. bottleneck "fixed" stays on `at`.
+   */
+  var CHAINS = [
+    {
+      id: "oil",
+      name: "Petroleum",
+      sub: "The bind moved from drilling to refining.",
+      color: "#f0a040",
+      hot: "#ffb15a",
+      glow: "rgba(240, 160, 64, 0.45)",
+      kind: "barrel",
+      vFast: 0.105,
+      vSlow: 0.016,
+      pinch: 0.09,
+      count: 32,
+      minGap: 0.011,
+      catchup: 3.4,
+      bottleneck: { mode: "shift", from: 0, to: 1 },
+      stages: [
+        { title: "Oil companies", sub: "Crude producers", note: "Drilling binds", bar: "#e0a030" },
+        { title: "Refineries", sub: "Refinery technology", note: "Refining binds", bar: "#e07a2f" },
+        { title: "Recipes", sub: "Distill, crack, reform", note: "", bar: "#f6c945" },
+        { title: "Products", sub: "Gasoline, diesel, jet fuel, plastics", note: "", bar: "#8fd18a" }
+      ]
+    },
+    {
+      id: "ai",
+      name: "AI",
+      sub: "The bind stays on fab capacity.",
+      color: "#3ec6ff",
+      hot: "#ff6a4a",
+      glow: "rgba(62, 198, 255, 0.4)",
+      kind: "chip",
+      vFast: 0.105,
+      vSlow: 0.011,
+      pinch: 0.082,
+      count: 38,
+      minGap: 0.0102,
+      catchup: 3.4,
+      bottleneck: { mode: "fixed", at: 1 },
+      stages: [
+        {
+          title: "Chip companies",
+          sub: "Same role as oil companies",
+          pills: [{ t: "NVIDIA" }, { t: "AMD" }],
+          note: "",
+          bar: "#76b900"
+        },
+        {
+          title: "Fabs",
+          sub: "Same role as refinery tech",
+          pills: [{ t: "TSMC" }, { t: "Rapidus", tag: "Japan" }],
+          note: "Years to come online",
+          bar: "#2ec5ff",
+          hot: true
+        },
+        {
+          title: "AI models",
+          sub: "Same role as the recipes",
+          note: "",
+          bar: "#a78bfa"
+        },
+        {
+          title: "Chips",
+          sub: "Same role as the products",
+          note: "Demand is not the bind",
+          dim: true,
+          bar: "#7eb6ff"
+        }
+      ]
+    }
+  ];
+
+  var motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var speedScale = motionQuery.matches ? 0.25 : 1;
+  if (motionQuery.addEventListener) {
+    motionQuery.addEventListener("change", function (e) {
+      speedScale = e.matches ? 0.25 : 1;
+    });
+  }
+
+  var diagram = document.getElementById("diagram");
+  var canvas = document.getElementById("flow");
+  var ctx = canvas.getContext("2d");
+  var mount = document.getElementById("mount");
+  var simTime = 0;
+  var lastStamp = 0;
+  var warmed = false;
+  var ERA_PERIOD = 24;
+
+  var cols = document.getElementById("cols");
+  COLS.forEach(function (label) {
+    var span = document.createElement("span");
+    span.textContent = label;
+    cols.appendChild(span);
+  });
+
+  CHAINS.forEach(function (chain, chainIndex) {
+    var head = document.createElement("div");
+    head.className = "rowhead";
+    head.style.setProperty("--accent", chain.color);
+
+    var title = document.createElement("div");
+    title.className = "rowtitle";
+    var swatch = document.createElement("span");
+    swatch.className = "swatch";
+    var name = document.createElement("strong");
+    name.textContent = chain.name;
+    var sub = document.createElement("span");
+    sub.className = "rowsub";
+    sub.textContent = chain.sub;
+    title.appendChild(swatch);
+    title.appendChild(name);
+    title.appendChild(sub);
+    head.appendChild(title);
+
+    if (chain.bottleneck.mode === "shift") {
+      var gauge = document.createElement("div");
+      gauge.className = "gauge";
+      var left = document.createElement("span");
+      left.className = "gauge-label";
+      left.id = "era-drill";
+      left.textContent = "Drilling";
+      var track = document.createElement("span");
+      track.className = "gauge-track";
+      var bead = document.createElement("span");
+      bead.className = "gauge-bead";
+      bead.id = "era-bead";
+      track.appendChild(bead);
+      var right = document.createElement("span");
+      right.className = "gauge-label right";
+      right.id = "era-refine";
+      right.textContent = "Refining";
+      gauge.appendChild(left);
+      gauge.appendChild(track);
+      gauge.appendChild(right);
+      head.appendChild(gauge);
+    } else {
+      var now = document.createElement("div");
+      now.className = "now";
+      var dot = document.createElement("span");
+      dot.className = "now-dot";
+      now.appendChild(dot);
+      now.appendChild(document.createTextNode("Fab capacity, now"));
+      head.appendChild(now);
+    }
+    mount.appendChild(head);
+
+    var lanes = document.createElement("div");
+    lanes.className = "lanes chain-" + chain.id;
+    chain.stageEls = [];
+    chain.stages.forEach(function (stage) {
+      var card = document.createElement("article");
+      card.className = "stage" + (stage.hot ? " is-hot" : "");
+      card.style.setProperty("--bar", stage.bar);
+
+      var body = document.createElement("div");
+      body.className = "stage-body";
+      var h2 = document.createElement("h2");
+      h2.textContent = stage.title;
+      var subLine = document.createElement("p");
+      subLine.className = "sub";
+      subLine.textContent = stage.sub;
+      body.appendChild(h2);
+      body.appendChild(subLine);
+
+      if (stage.pills && stage.pills.length) {
+        var pills = document.createElement("div");
+        pills.className = "pills";
+        stage.pills.forEach(function (pill) {
+          var el = document.createElement("span");
+          el.className = "pill";
+          el.textContent = pill.t;
+          if (pill.tag) {
+            var tag = document.createElement("i");
+            tag.textContent = pill.tag;
+            el.appendChild(tag);
+          }
+          pills.appendChild(el);
+        });
+        body.appendChild(pills);
+      }
+
+      var note = document.createElement("span");
+      note.className = "note" + (stage.dim ? " dim" : "");
+      note.textContent = stage.note || "";
+      if (!stage.note) note.style.opacity = "0";
+      body.appendChild(note);
+      stage.noteEl = note;
+
+      var groove = document.createElement("div");
+      groove.className = "groove";
+      card.appendChild(body);
+      card.appendChild(groove);
+      lanes.appendChild(card);
+      chain.stageEls.push(card);
+    });
+    mount.appendChild(lanes);
+    chain.root = lanes;
+
+    if (chainIndex === 0) {
+      var analogs = document.createElement("div");
+      analogs.className = "analogs";
+      COLS.forEach(function () {
+        var mark = document.createElement("span");
+        mark.textContent = "≈";
+        mark.title = "Same role";
+        analogs.appendChild(mark);
+      });
+      mount.appendChild(analogs);
+    }
+
+    chain.particles = [];
+    for (var i = 0; i < chain.count; i++) {
+      chain.particles.push({
+        id: i,
+        s: (i + 0.5) / chain.count,
+        v: chain.vFast,
+        lane: (i % 3) - 1
+      });
+    }
+    chain.centerS = 0.2;
+    chain.wide = 12;
+  });
+
+  var tickerText =
+    "Drilling era — petroleum’s binding constraint was getting crude out of the ground.    ·    " +
+    "Refining era — the constraint moved to refinery capacity.    ·    " +
+    "Now — the AI constraint is chip fab hardware. New fabs take years to build and bring online. Demand and competition for supply are not the biggest factor.    ·    ";
+  var ticker = document.getElementById("ticker");
+  for (var copy = 0; copy < 2; copy++) {
+    var seq = document.createElement("span");
+    seq.className = "ticker-seq";
+    seq.textContent = tickerText;
+    ticker.appendChild(seq);
+  }
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function pinchAmount(distance, radius) {
+    if (distance >= radius) return 0;
+    var t = 1 - distance / radius;
+    return t * t * (3 - 2 * t);
+  }
+
+  function eraBlend() {
+    var u = (simTime % ERA_PERIOD) / ERA_PERIOD;
+    return (1 - Math.cos(u * Math.PI * 2)) / 2;
+  }
+
+  function buildTrack(grooves) {
+    var pts = [];
+    pts.push({ x: grooves[0].x, y: grooves[0].cy });
+    grooves.forEach(function (g) { pts.push({ x: g.cx, y: g.cy }); });
+    var last = grooves[grooves.length - 1];
+    pts.push({ x: last.x + last.w, y: last.cy });
+
+    var segLen = [];
+    var total = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      segLen.push(len);
+      total += len;
+    }
+    var acc = 0;
+    var sAt = [0];
+    for (var j = 0; j < segLen.length; j++) {
+      acc += segLen[j];
+      sAt.push(total ? acc / total : 0);
+    }
+    var stageS = [];
+    for (var k = 0; k < grooves.length; k++) stageS.push(sAt[k + 1]);
+    return { pts: pts, segLen: segLen, total: total || 1, stageS: stageS };
+  }
+
+  function pointAt(track, s) {
+    var pts = track.pts;
+    var dirx = pts[1].x - pts[0].x;
+    var diry = pts[1].y - pts[0].y;
+    var dirLen = Math.hypot(dirx, diry) || 1;
+    if (s <= 0) {
+      return { x: pts[0].x + (dirx / dirLen) * s * track.total, y: pts[0].y + (diry / dirLen) * s * track.total };
+    }
+    if (s >= 1) {
+      var n = pts.length - 1;
+      var ex = pts[n].x - pts[n - 1].x;
+      var ey = pts[n].y - pts[n - 1].y;
+      var el = Math.hypot(ex, ey) || 1;
+      return { x: pts[n].x + (ex / el) * (s - 1) * track.total, y: pts[n].y + (ey / el) * (s - 1) * track.total };
+    }
+    var acc = 0;
+    for (var i = 1; i < pts.length; i++) {
+      var seg = track.segLen[i - 1] / track.total;
+      if (s <= acc + seg || i === pts.length - 1) {
+        var u = seg === 0 ? 0 : (s - acc) / seg;
+        return {
+          x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * u,
+          y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * u
+        };
+      }
+      acc += seg;
+    }
+    return { x: pts[0].x, y: pts[0].y };
+  }
+
+  function measure() {
+    var origin = diagram.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = diagram.clientWidth;
+    var h = diagram.clientHeight;
+    if (w < 2 || h < 2) return;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    CHAINS.forEach(function (chain) {
+      var grooves = Array.prototype.map.call(chain.root.querySelectorAll(".groove"), function (el) {
+        var r = el.getBoundingClientRect();
+        return {
+          x: r.left - origin.left,
+          y: r.top - origin.top,
+          w: r.width,
+          h: r.height,
+          cx: r.left - origin.left + r.width / 2,
+          cy: r.top - origin.top + r.height / 2
+        };
+      });
+      if (!grooves.length || grooves[0].w < 2) return;
+      chain.grooves = grooves;
+      chain.track = buildTrack(grooves);
+      chain.wide = Math.max(6, grooves[0].h * 0.34);
+    });
+  }
+
+  function speedAt(s, chain) {
+    var pinch = pinchAmount(Math.abs(s - chain.centerS), chain.pinch);
+    var v = chain.vSlow + (chain.vFast - chain.vSlow) * (1 - pinch);
+    return v * speedScale;
+  }
+
+  function updateCenters() {
+    var blend = eraBlend();
+    CHAINS.forEach(function (chain) {
+      if (!chain.track) return;
+      var spec = chain.bottleneck;
+      if (spec.mode === "shift") {
+        var a = chain.track.stageS[spec.from];
+        var b = chain.track.stageS[spec.to];
+        chain.centerS = a + (b - a) * blend;
+      } else {
+        chain.centerS = chain.track.stageS[spec.at];
+      }
+    });
+    var drill = document.getElementById("era-drill");
+    var refine = document.getElementById("era-refine");
+    var bead = document.getElementById("era-bead");
+    if (drill && refine && bead) {
+      drill.style.opacity = String(0.4 + 0.6 * (1 - blend));
+      refine.style.opacity = String(0.4 + 0.6 * blend);
+      bead.style.left = (blend * 100) + "%";
+    }
+    CHAINS.forEach(function (chain) {
+      if (!chain.track) return;
+      chain.stages.forEach(function (stage, i) {
+        if (chain.bottleneck.mode === "fixed") return;
+        if (!stage.note) return;
+        var d = Math.abs(chain.track.stageS[i] - chain.centerS);
+        var near = clamp(1 - d / 0.16, 0, 1);
+        stage.noteEl.style.opacity = String(near);
+        chain.stageEls[i].classList.toggle("is-hot", near > 0.72);
+      });
+    });
+  }
+
+  function stepChain(chain, dt) {
+    if (!chain.track || dt <= 0) return;
+    var ps = chain.particles;
+    ps.sort(function (a, b) { return b.s - a.s; });
+    var minGap = chain.minGap;
+    for (var i = 0; i < ps.length; i++) {
+      var p = ps[i];
+      var cap = speedAt(p.s, chain);
+      if (i > 0) {
+        var ahead = ps[i - 1];
+        var gap = ahead.s - p.s;
+        if (gap <= minGap) cap = Math.min(cap, Math.max(0, ahead.v));
+        else cap = Math.min(cap, ahead.v + (gap - minGap) * chain.catchup);
+        var maxStep = Math.max(0, ahead.s - minGap - p.s);
+        cap = Math.min(cap, maxStep / dt);
+      }
+      p.v = cap;
+      p.s += cap * dt;
+    }
+    var tail = Infinity;
+    for (var j = 0; j < ps.length; j++) if (ps[j].s <= 1) tail = Math.min(tail, ps[j].s);
+    if (!isFinite(tail)) tail = 0;
+    var exited = ps.filter(function (p) { return p.s > 1; }).sort(function (a, b) { return a.s - b.s; });
+    exited.forEach(function (p) {
+      tail -= minGap;
+      p.s = tail;
+      p.v = speedAt(p.s, chain);
+    });
+  }
+
+  function stepAll(dt) {
+    updateCenters();
+    CHAINS.forEach(function (chain) { stepChain(chain, dt); });
+  }
+
+  function warm() {
+    if (warmed || !CHAINS[0].track || !CHAINS[1].track) return;
+    var prev = speedScale;
+    speedScale = 1;
+    simTime = 0;
+    for (var i = 0; i < 1500; i++) stepAll(1 / 60);
+    simTime = 0;
+    speedScale = prev;
+    warmed = true;
+  }
+
+  function mix(hex, hex2, t) {
+    function ch(h, i) { return parseInt(h.slice(i, i + 2), 16); }
+    var r = Math.round(ch(hex, 1) + (ch(hex2, 1) - ch(hex, 1)) * t);
+    var g = Math.round(ch(hex, 3) + (ch(hex2, 3) - ch(hex, 3)) * t);
+    var b = Math.round(ch(hex, 5) + (ch(hex2, 5) - ch(hex, 5)) * t);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function roundRect(x, y, w, h, r) {
+    var rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function samplePipe(chain) {
+    var out = [];
+    var n = 72;
+    for (var i = 0; i <= n; i++) {
+      var s = i / n;
+      var p = pointAt(chain.track, s);
+      var prev = pointAt(chain.track, Math.max(0, s - 0.012));
+      var next = pointAt(chain.track, Math.min(1, s + 0.012));
+      var nx = next.x - prev.x;
+      var ny = next.y - prev.y;
+      var len = Math.hypot(nx, ny) || 1;
+      var pinch = pinchAmount(Math.abs(s - chain.centerS), chain.pinch);
+      out.push({
+        x: p.x,
+        y: p.y,
+        px: -ny / len,
+        py: nx / len,
+        half: chain.wide * (1 - 0.74 * pinch),
+        pinch: pinch,
+        s: s
+      });
+    }
+    return out;
+  }
+
+  function drawPipe(chain) {
+    var pts = samplePipe(chain);
+    function band(extra) {
+      ctx.beginPath();
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        var x = p.x + p.px * (p.half + extra);
+        var y = p.y + p.py * (p.half + extra);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      for (var j = pts.length - 1; j >= 0; j--) {
+        var q = pts[j];
+        ctx.lineTo(q.x - q.px * (q.half + extra), q.y - q.py * (q.half + extra));
+      }
+      ctx.closePath();
+    }
+    band(3.5);
+    ctx.fillStyle = chain.glow;
+    ctx.globalAlpha = 0.28;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    band(0);
+    ctx.fillStyle = "#070707";
+    ctx.fill();
+
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = "round";
+    for (var i = 1; i < pts.length; i++) {
+      var a = pts[i - 1];
+      var b = pts[i];
+      var pinch = Math.max(a.pinch, b.pinch);
+      var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(simTime * 3.2 + b.s * 8));
+      ctx.strokeStyle = mix(chain.color, chain.hot, pinch);
+      ctx.globalAlpha = (0.45 + 0.55 * pinch) * (pinch > 0.2 ? pulse : 1);
+      ctx.beginPath();
+      ctx.moveTo(a.x + a.px * a.half, a.y + a.py * a.half);
+      ctx.lineTo(b.x + b.px * b.half, b.y + b.py * b.half);
+      ctx.moveTo(a.x - a.px * a.half, a.y - a.py * a.half);
+      ctx.lineTo(b.x - b.px * b.half, b.y - b.py * b.half);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function particleColor(chain, p) {
+    var stages = chain.track.stageS;
+    if (chain.id === "oil") {
+      if (p.s > stages[2]) return ["#ffe08a", "#f0a040", "#7ec8e3", "#e4ddd2"][p.id % 4];
+      return "#f2b14a";
+    }
+    if (p.s > stages[2]) return "#e7f7ff";
+    if (p.s > stages[1]) return "#d2c4ff";
+    return p.id % 2 ? "#7CFF6B" : "#5ad7ff";
+  }
+
+  function drawParticles(chain) {
+    chain.particles.forEach(function (p) {
+      if (p.s < -0.05 || p.s > 1.03) return;
+      var loc = pointAt(chain.track, p.s);
+      var pinch = pinchAmount(Math.abs(p.s - chain.centerS), chain.pinch);
+      var spread = (1 - pinch) * Math.min(7, chain.wide * 0.55);
+      var x = loc.x;
+      var y = loc.y + p.lane * spread;
+      var fade = 1;
+      if (p.s < 0.03) fade = clamp(p.s / 0.03, 0, 1);
+      else if (p.s > 0.97) fade = clamp((1.02 - p.s) / 0.05, 0, 1);
+      var color = particleColor(chain, p);
+      var shrink = 1 - 0.42 * pinch;
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = color;
+      if (chain.kind === "barrel") {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(p.s * 14);
+        ctx.scale(shrink, shrink);
+        roundRect(-6, -3.3, 12, 6.6, 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.fillRect(-1.1, -3.3, 2.2, 6.6);
+        ctx.restore();
+      } else {
+        var hw = 4 * shrink;
+        roundRect(x - hw, y - hw, hw * 2, hw * 2, 1.6);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - hw * 0.38, y - hw * 0.38, hw * 0.76, hw * 0.76);
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    var w = diagram.clientWidth;
+    var h = diagram.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    CHAINS.forEach(function (chain) {
+      if (!chain.track) return;
+      drawPipe(chain);
+      drawParticles(chain);
+    });
+  }
+
+  function frame(now) {
+    if (!lastStamp) lastStamp = now;
+    var dt = Math.min(0.05, (now - lastStamp) / 1000);
+    lastStamp = now;
+    if (!CHAINS[0].track) measure();
+    warm();
+    simTime += dt * speedScale;
+    stepAll(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  measure();
+  if (window.ResizeObserver) new ResizeObserver(measure).observe(diagram);
+  window.addEventListener("resize", measure);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
