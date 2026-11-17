@@ -39,8 +39,35 @@ test('chronology and source rules stay consistent', () => {
   assert.match(data.questions.find(q => q.id === 'q-hughes').datedNote, /1989/);
   assert.ok(byId('sitb-pages').start < amazon.start);
   assert.equal(byId('kindle-api').evidence.includes('confirmed-by-richard'), true);
+  assert.equal(byId('sitb-pages').evidence.includes('confirmed-by-richard'), true);
+  assert.equal(byId('sitb-pages').evidence.includes('tentative-date'), true);
+  assert.equal(byId('sitb-pages').dateStatus, 'tentative');
+  assert.match(byId('sitb-pages').summary, /designed and built this server technology from scratch/);
+  assert.match(byId('sitb-pages').laneCopy.compute.title, /designed and built from scratch/);
+  assert.match(byId('sitb-pages').detail.join(' '), /petabyte-scale and 3x faster/);
+  assert.match(byId('sitb-pages').detail.join(' '), /80 TB, 500 million images, and a 30 percent cut/);
+  assert.match(byId('sitb-pages').detail.join(' '), /confirmed authorship, not those numbers/);
+  assert.equal(byId('azure-storage').evidence.includes('confirmed-by-richard'), true);
+  assert.match(byId('azure-storage').laneCopy.compute.title, /Tracked down a long-recurring crash inside a fleet-scale storage service/);
+  assert.match(byId('azure-storage').laneCopy.compute.subtitle, /The fleet was the employer's, not his design\. He learned it to debug it/);
   assert.equal(byId('azure-storage').summary.includes('personal deployment') ||
     byId('azure-storage').detail.join(' ').includes('personal deployment'), true);
+  assert.match(byId('azure-storage').detail.join(' '), /not a personal deployment or his design/);
+  assert.match(byId('azure-storage').detail.join(' '), /outcome is an open question/);
+  assert.match(byId('azure-storage').detail.join(' '), /consensus implementation/);
+  assert.match(byId('azure-storage').detail.join(' '), /range of systems he worked in, not systems he deployed/);
+  assert.doesNotMatch(byId('azure-storage').summary + byId('azure-storage').title + byId('azure-storage').laneCopy.compute.title, /shipped/);
+  assert.equal(data.questions.some(q => q.id === 'q-scale'), false);
+  assert.match(data.tracks.find(t => t.id === 'compute').blurb, /Chips to hundreds of thousands of cloud computers is the range of systems he worked in, not systems he deployed/);
+  for (const revision of data.revisions) {
+    assert.doesNotMatch(revision.label, /year numbers default to hidden/i);
+    assert.doesNotMatch(revision.label, /years are hidden/i);
+    assert.doesNotMatch(revision.label, api.YEAR_RE);
+  }
+  const latest = data.revisions[data.revisions.length - 1];
+  assert.equal(latest.whenLabel, '17 November 2026');
+  assert.match(latest.label, /designed and built the book-page image system/);
+  assert.match(latest.label, /debugging inside the employer's fleet/);
 });
 
 test('each lane has at least one milestone', () => {
@@ -186,8 +213,11 @@ test('quarter labels sit in each calendar quarter and hide when the scale is tig
   const off = api.initialState(data);
   off.showYears = false;
   off.trackWidth = wide;
-  assert.equal(api.viewModel(data, off).quarters.length, 0);
-  assert.doesNotMatch(api.flatten(api.viewModel(data, off)).join('\n'), /\bQ[1-4]\b/);
+  const hiddenQuarters = api.viewModel(data, off);
+  assert.equal(hiddenQuarters.quarters.length, 0);
+  const withoutRevisionLog = api.flatten(Object.assign({}, hiddenQuarters, { revisions: [] })).join('\n');
+  assert.doesNotMatch(withoutRevisionLog, /\bQ[1-4]\b/);
+  assert.match(hiddenQuarters.revisions.join('\n'), /Q1–Q4/);
   const on = api.initialState(data);
   on.trackWidth = wide;
   const labels = api.viewModel(data, on).quarters.map(q => q.label);
