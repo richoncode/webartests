@@ -48,15 +48,28 @@ test('chronology and source rules stay consistent', () => {
   assert.match(byId('sitb-pages').detail.join(' '), /80 TB, 500 million images, and a 30 percent cut/);
   assert.match(byId('sitb-pages').detail.join(' '), /confirmed authorship, not those numbers/);
   assert.equal(byId('azure-storage').evidence.includes('confirmed-by-richard'), true);
-  assert.match(byId('azure-storage').laneCopy.compute.title, /Tracked down a long-recurring crash inside a fleet-scale storage service/);
-  assert.match(byId('azure-storage').laneCopy.compute.subtitle, /The fleet was the employer's, not his design\. He learned it to debug it/);
+  assert.equal(byId('azure-storage').evidence.includes('portfolio-documented'), true);
+  assert.match(byId('azure-storage').laneCopy.compute.title, /single-bit memory errors/);
+  assert.match(byId('azure-storage').laneCopy.compute.subtitle, /memory bit-error rate/);
+  assert.match(byId('azure-storage').laneCopy.compute.subtitle, /not his design/);
+  assert.match(byId('azure-storage').summary, /single-bit memory errors/);
+  assert.match(byId('azure-storage').summary, /MTBF of a bit error/);
+  assert.match(byId('azure-storage').detail.join(' '), /500,000 compute nodes/);
+  assert.match(byId('azure-storage').detail.join(' '), /matched the MTBF of a bit error/);
   assert.equal(byId('azure-storage').summary.includes('personal deployment') ||
     byId('azure-storage').detail.join(' ').includes('personal deployment'), true);
   assert.match(byId('azure-storage').detail.join(' '), /not a personal deployment or his design/);
-  assert.match(byId('azure-storage').detail.join(' '), /outcome is an open question/);
+  assert.match(byId('azure-storage').detail.join(' '), /Whether any mitigation shipped afterward and whether the weekly crash stopped is still unconfirmed/);
+  assert.doesNotMatch(byId('azure-storage').detail.join(' '), /did not say whether a fix shipped/);
   assert.match(byId('azure-storage').detail.join(' '), /consensus implementation/);
   assert.match(byId('azure-storage').detail.join(' '), /range of systems he worked in, not systems he deployed/);
   assert.doesNotMatch(byId('azure-storage').summary + byId('azure-storage').title + byId('azure-storage').laneCopy.compute.title, /shipped/);
+  assert.ok(byId('azure-storage').sources.includes('Portfolio role entry (Windows Azure Storage)'));
+  const azureOutcome = data.questions.find(q => q.id === 'q-azure-outcome');
+  assert.ok(azureOutcome);
+  assert.deepEqual(azureOutcome.refs, ['azure-storage']);
+  assert.match(azureOutcome.prompt, /After the bit-error finding/);
+  assert.match(azureOutcome.prompt, /did the weekly crash stop/);
   assert.equal(data.questions.some(q => q.id === 'q-scale'), false);
   assert.match(data.tracks.find(t => t.id === 'compute').blurb, /Chips to hundreds of thousands of cloud computers is the range of systems he worked in, not systems he deployed/);
   for (const revision of data.revisions) {
@@ -64,10 +77,14 @@ test('chronology and source rules stay consistent', () => {
     assert.doesNotMatch(revision.label, /years are hidden/i);
     assert.doesNotMatch(revision.label, api.YEAR_RE);
   }
+  const bookPages = data.revisions.find(r => r.whenLabel === '17 November 2026');
+  assert.match(bookPages.label, /designed and built the book-page image system/);
+  assert.match(bookPages.label, /debugging inside the employer's fleet/);
   const latest = data.revisions[data.revisions.length - 1];
-  assert.equal(latest.whenLabel, '17 November 2026');
-  assert.match(latest.label, /designed and built the book-page image system/);
-  assert.match(latest.label, /debugging inside the employer's fleet/);
+  assert.equal(latest.whenLabel, '20 November 2026');
+  assert.match(latest.label, /single-bit memory errors/);
+  assert.match(latest.label, /fleet crash rate/);
+  assert.match(latest.label, /remains a question/);
 });
 
 test('each lane has at least one milestone', () => {
