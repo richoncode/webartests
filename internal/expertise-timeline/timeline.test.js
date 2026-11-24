@@ -50,26 +50,57 @@ test('chronology and source rules stay consistent', () => {
   assert.equal(byId('azure-storage').evidence.includes('confirmed-by-richard'), true);
   assert.equal(byId('azure-storage').evidence.includes('portfolio-documented'), true);
   assert.match(byId('azure-storage').laneCopy.compute.title, /single-bit memory errors/);
+  assert.match(byId('azure-storage').laneCopy.compute.title, /about every 4 days/);
   assert.match(byId('azure-storage').laneCopy.compute.subtitle, /memory bit-error rate/);
   assert.match(byId('azure-storage').laneCopy.compute.subtitle, /not his design/);
   assert.match(byId('azure-storage').summary, /single-bit memory errors/);
   assert.match(byId('azure-storage').summary, /MTBF of a bit error/);
+  assert.match(byId('azure-storage').summary, /about every 4 days/);
+  assert.match(byId('azure-storage').summary, /Richard confirmed a mitigation/);
+  assert.match(byId('azure-storage').summary, /rebooted immediately to take itself out of rotation/);
+  assert.match(byId('azure-storage').summary, /re-synced from the other replicas/);
   assert.match(byId('azure-storage').detail.join(' '), /500,000 compute nodes/);
   assert.match(byId('azure-storage').detail.join(' '), /matched the MTBF of a bit error/);
+  assert.match(byId('azure-storage').detail.join(' '), /Richard confirmed a mitigation/);
+  assert.match(byId('azure-storage').detail.join(' '), /local copy disagreed with the other copies/);
+  assert.match(byId('azure-storage').detail.join(' '), /derived arithmetic/i);
+  assert.match(byId('azure-storage').detail.join(' '), /2,000,000 machine-days/);
+  assert.match(byId('azure-storage').detail.join(' '), /5,500 years/);
   assert.equal(byId('azure-storage').summary.includes('personal deployment') ||
     byId('azure-storage').detail.join(' ').includes('personal deployment'), true);
   assert.match(byId('azure-storage').detail.join(' '), /not a personal deployment or his design/);
-  assert.match(byId('azure-storage').detail.join(' '), /Whether any mitigation shipped afterward and whether the weekly crash stopped is still unconfirmed/);
+  assert.match(byId('azure-storage').detail.join(' '), /does not assign the design or the implementation/);
+  assert.match(byId('azure-storage').detail.join(' '), /Whether the crashes then ended is still unconfirmed/);
   assert.doesNotMatch(byId('azure-storage').detail.join(' '), /did not say whether a fix shipped/);
   assert.match(byId('azure-storage').detail.join(' '), /consensus implementation/);
   assert.match(byId('azure-storage').detail.join(' '), /range of systems he worked in, not systems he deployed/);
+  const azureStory = [
+    byId('azure-storage').title,
+    byId('azure-storage').summary,
+    byId('azure-storage').laneCopy.compute.title,
+    byId('azure-storage').laneCopy.compute.subtitle,
+    byId('azure-storage').detail.join(' '),
+    byId('azure-storage').caveats.join(' ')
+  ].join('\n');
+  assert.doesNotMatch(azureStory, /\bweekly\b/i);
+  assert.doesNotMatch(azureStory, /crash stopped|stopped the crash|no longer crashed|errors stopped/i);
+  assert.doesNotMatch(azureStory, /he designed|he implemented|Richard designed|Richard implemented|his implementation/i);
   assert.doesNotMatch(byId('azure-storage').summary + byId('azure-storage').title + byId('azure-storage').laneCopy.compute.title, /shipped/);
   assert.ok(byId('azure-storage').sources.includes('Portfolio role entry (Windows Azure Storage)'));
+  assert.ok(byId('azure-storage').sources.includes('Richard, chat answer 2026-11-21/22'));
   const azureOutcome = data.questions.find(q => q.id === 'q-azure-outcome');
   assert.ok(azureOutcome);
+  assert.equal(azureOutcome.priority, 13);
   assert.deepEqual(azureOutcome.refs, ['azure-storage']);
-  assert.match(azureOutcome.prompt, /After the bit-error finding/);
-  assert.match(azureOutcome.prompt, /did the weekly crash stop/);
+  assert.match(azureOutcome.prompt, /Did the crash stop after the replication-and-reboot fix, and was that fix your design, your implementation, or the team's\?/);
+  assert.doesNotMatch(azureOutcome.prompt, /weekly/);
+  const azureAnswered = data.answered.find(q => q.id === 'q-azure-outcome-answered');
+  assert.ok(azureAnswered);
+  assert.equal(azureAnswered.status, 'answered');
+  assert.deepEqual(azureAnswered.refs, ['azure-storage']);
+  assert.match(azureAnswered.prompt, /After the bit-error finding/);
+  assert.match(azureAnswered.prompt, /did the weekly crash stop/);
+  assert.equal(data.questions.some(q => q.prompt.includes('did the weekly crash stop')), false);
   assert.equal(data.questions.some(q => q.id === 'q-scale'), false);
   assert.match(data.tracks.find(t => t.id === 'compute').blurb, /Chips to hundreds of thousands of cloud computers is the range of systems he worked in, not systems he deployed/);
   for (const revision of data.revisions) {
@@ -80,11 +111,33 @@ test('chronology and source rules stay consistent', () => {
   const bookPages = data.revisions.find(r => r.whenLabel === '17 November 2026');
   assert.match(bookPages.label, /designed and built the book-page image system/);
   assert.match(bookPages.label, /debugging inside the employer's fleet/);
+  const priorStorage = data.revisions.find(r => r.whenLabel === '20 November 2026');
+  assert.match(priorStorage.label, /single-bit memory errors/);
+  assert.match(priorStorage.label, /fleet crash rate/);
+  assert.match(priorStorage.label, /remains a question/);
   const latest = data.revisions[data.revisions.length - 1];
-  assert.equal(latest.whenLabel, '20 November 2026');
-  assert.match(latest.label, /single-bit memory errors/);
-  assert.match(latest.label, /fleet crash rate/);
-  assert.match(latest.label, /remains a question/);
+  assert.equal(latest.whenLabel, '24 November 2026');
+  assert.match(latest.label, /about every 4 days/);
+  assert.match(latest.label, /earlier question on that bar is answered/);
+  assert.match(latest.label, /derived arithmetic/);
+  assert.doesNotMatch(latest.label, /\bweekly\b/i);
+  assert.doesNotMatch(latest.label, api.YEAR_RE);
+  const azureOn = api.initialState(data);
+  azureOn.selected = 'azure-storage';
+  azureOn.showYears = true;
+  const azureShown = api.viewModel(data, azureOn).detail.join('\n');
+  assert.match(azureShown, /Richard, chat answer 2026-11-21\/22/);
+  assert.match(azureShown, /Answered question: Storage crash after the bit-error finding/);
+  assert.match(azureShown, /Open question: Crash stop and authorship of the fix/);
+  azureOn.showYears = false;
+  const azureHidden = api.viewModel(data, azureOn).detail.join('\n');
+  assert.doesNotMatch(azureHidden, api.YEAR_RE);
+  assert.match(azureHidden, /Source: Richard, chat answer/);
+  assert.match(api.popoutLines(data, byId('azure-storage'), true).join('\n'), /2026-11-21\/22/);
+  assert.doesNotMatch(api.popoutLines(data, byId('azure-storage'), false).join('\n'), api.YEAR_RE);
+  const answeredCard = api.viewModel(data, api.initialState(data)).answered.map(q => q.ask + '\n' + q.prompt).join('\n');
+  assert.match(answeredCard, /Answered\. Storage crash after the bit-error finding/);
+  assert.match(answeredCard, /did the weekly crash stop/);
 });
 
 test('each lane has at least one milestone', () => {
