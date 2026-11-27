@@ -115,13 +115,18 @@ test('chronology and source rules stay consistent', () => {
   assert.match(priorStorage.label, /single-bit memory errors/);
   assert.match(priorStorage.label, /fleet crash rate/);
   assert.match(priorStorage.label, /remains a question/);
-  const latest = data.revisions[data.revisions.length - 1];
-  assert.equal(latest.whenLabel, '24 November 2026');
-  assert.match(latest.label, /about every 4 days/);
-  assert.match(latest.label, /earlier question on that bar is answered/);
-  assert.match(latest.label, /derived arithmetic/);
-  assert.doesNotMatch(latest.label, /\bweekly\b/i);
-  assert.doesNotMatch(latest.label, api.YEAR_RE);
+  const storageRate = data.revisions.find(r => r.whenLabel === '24 November 2026');
+  assert.ok(storageRate);
+  assert.match(storageRate.label, /about every 4 days/);
+  assert.match(storageRate.label, /earlier question on that bar is answered/);
+  assert.match(storageRate.label, /derived arithmetic/);
+  assert.doesNotMatch(storageRate.label, /\bweekly\b/i);
+  assert.doesNotMatch(storageRate.label, api.YEAR_RE);
+  const xboxRevision = data.revisions[data.revisions.length - 1];
+  assert.equal(xboxRevision.whenLabel, '27 November 2026');
+  assert.match(xboxRevision.label, /Xbox Advanced Technology Group/);
+  assert.match(xboxRevision.label, /team membership only/);
+  assert.doesNotMatch(xboxRevision.label, api.YEAR_RE);
   const azureOn = api.initialState(data);
   azureOn.selected = 'azure-storage';
   azureOn.showYears = true;
@@ -138,6 +143,132 @@ test('chronology and source rules stay consistent', () => {
   const answeredCard = api.viewModel(data, api.initialState(data)).answered.map(q => q.ask + '\n' + q.prompt).join('\n');
   assert.match(answeredCard, /Answered\. Storage crash after the bit-error finding/);
   assert.match(answeredCard, /did the weekly crash stop/);
+});
+
+test('original Xbox ATG is a separate portfolio project from Forza', () => {
+  const xbox = byId('xbox-atg');
+  const forza = byId('forza');
+  assert.ok(xbox);
+  assert.equal(xbox.thread, 'xbox-atg');
+  assert.notEqual(xbox.thread, forza.thread);
+  assert.equal(xbox.dateStatus, 'portfolio-documented');
+  assert.equal(xbox.dateSource, 'project');
+  assert.equal(xbox.employerId, 'ms1');
+  assert.equal(forza.employerId, 'ms1');
+  assert.equal(xbox.start, '2002-01');
+  assert.equal(xbox.end, '2005-05');
+  assert.equal(forza.start, '2002-01');
+  assert.equal(forza.end, '2005-05');
+  assert.deepEqual(xbox.tracks, ['compute', 'authoring']);
+  assert.equal(xbox.trackStatus.compute, 'documented');
+  assert.equal(xbox.trackStatus.authoring, 'documented');
+  assert.deepEqual(forza.tracks, ['compute']);
+  assert.equal(forza.thread, 'forza');
+  assert.equal(forza.title, 'Console audio, physics, and streaming');
+  assert.equal(forza.laneCopy.compute.title, 'Sound, physics, and scenery keep up with a live race');
+  assert.equal(forza.laneCopy.compute.subtitle, 'Geometry streams from the disc on the original console work');
+  assert.equal(xbox.laneCopy.compute.title, 'Helping console developers get more out of the original Xbox');
+  assert.equal(xbox.laneCopy.compute.subtitle, 'SDK and low-level optimization work for game developers');
+  assert.equal(xbox.laneCopy.authoring.title, 'Tools that streamline the console developer experience');
+  assert.equal(xbox.laneCopy.authoring.subtitle, 'SDK design for game developers');
+  assert.deepEqual(xbox.sources, [
+    'Portfolio device card',
+    'Portfolio project list',
+    'Original Xbox dashboard hidden team credits (public video), found 2026-11-24'
+  ]);
+  assert.match(xbox.summary, /Advanced Technology Group/);
+  assert.match(xbox.summary, /SDK design/);
+  assert.match(xbox.summary, /low-level optimization/);
+  assert.match(xbox.detail.join(' '), /not the Microsoft employer span/);
+  assert.match(xbox.detail.join(' '), /different project/);
+  assert.match(xbox.detail.join(' '), /does not name a shipped title/);
+  assert.match(xbox.caveats.join(' '), /team membership only/);
+  assert.match(xbox.caveats.join(' '), /does not say what he did or when he joined/);
+  const alwaysVisible = [
+    xbox.title,
+    xbox.summary,
+    xbox.short,
+    xbox.detail.join('\n'),
+    xbox.caveats.join('\n'),
+    xbox.laneCopy.compute.title,
+    xbox.laneCopy.compute.subtitle,
+    xbox.laneCopy.authoring.title,
+    xbox.laneCopy.authoring.subtitle
+  ].join('\n');
+  assert.doesNotMatch(alwaysVisible, api.YEAR_RE);
+  assert.doesNotMatch(alwaysVisible, /Eggsbox|@[a-z0-9.-]+\.[a-z]{2,}/i);
+
+  const question = data.questions.find(item => item.id === 'q-xbox-atg');
+  assert.ok(question);
+  assert.equal(question.priority, 14);
+  assert.equal(data.questions[12].id, 'q-azure-outcome');
+  assert.equal(data.questions[12].priority, 13);
+  assert.equal(data.questions[12].prompt, 'Did the crash stop after the replication-and-reboot fix, and was that fix your design, your implementation, or the team\'s?');
+  assert.equal(data.questions[13].id, 'q-xbox-atg');
+  assert.deepEqual(question.refs, ['xbox-atg', 'forza']);
+  assert.equal(question.prompt, 'Your name is in the original Xbox dashboard\'s hidden team credits, but the portfolio dates your Xbox ATG and Forza work from January 2002. Did you join the Xbox team before the November 2001 launch, and what did you work on that got you into those credits?');
+  assert.match(question.datedNote, /January 2002 – May 2005/);
+  assert.match(question.datedNote, /November 2001/);
+  assert.match(question.datedNote, /not yet reconciled/);
+  assert.match(question.datedNote, /project dates, not employment dates/);
+
+  const yearsOn = api.initialState(data);
+  yearsOn.showYears = true;
+  yearsOn.selected = 'xbox-atg';
+  const shown = api.viewModel(data, yearsOn);
+  assert.match(shown.questions.map(item => item.prompt).join('\n'), /January 2002/);
+  assert.match(shown.questions.map(item => item.prompt).join('\n'), /November 2001/);
+  assert.match(shown.questions.map(item => item.dated).join('\n'), /not yet reconciled/);
+  assert.match(shown.detail.join('\n'), /Open question: Xbox credit and the portfolio window/);
+  assert.match(api.popoutLines(data, xbox, true).join('\n'), /January 2002/);
+  assert.match(api.popoutLines(data, xbox, true).join('\n'), /found 2026-11-24/);
+
+  const yearsOff = api.initialState(data);
+  yearsOff.showYears = false;
+  yearsOff.selected = 'xbox-atg';
+  const hidden = api.viewModel(data, yearsOff);
+  assert.doesNotMatch(api.flatten(hidden).join('\n'), api.YEAR_RE);
+  assert.match(hidden.detail.join('\n'), /team membership only/);
+  assert.match(hidden.detail.join('\n'), /Original Xbox dashboard hidden team credits/);
+  assert.doesNotMatch(hidden.detail.join('\n'), /2026-11-24/);
+  assert.equal(hidden.questions.find(item => item.ask.endsWith('Xbox credit and the portfolio window')).dated, '');
+  assert.doesNotMatch(hidden.questions.map(item => item.prompt).join('\n'), api.YEAR_RE);
+  assert.doesNotMatch(api.popoutLines(data, xbox, false).join('\n'), api.YEAR_RE);
+
+  const forzaOn = api.initialState(data);
+  forzaOn.selected = 'forza';
+  assert.match(api.viewModel(data, forzaOn).detail.join('\n'), /Open question: Xbox credit and the portfolio window/);
+  assert.equal(forza.summary, 'Real-time sound and physics driven from the game world, plus geometry streaming from disc to the screen, on the original Forza work.');
+
+  const state = api.initialState(data);
+  state.viewStart = 2000 * 12;
+  state.visibleMonths = 80;
+  state.trackWidth = 4000;
+  state.showYears = true;
+  const lanes = api.viewModel(data, state).lanes;
+  const compute = lanes.find(lane => lane.id === 'compute').bars;
+  const authoring = lanes.find(lane => lane.id === 'authoring').bars;
+  const forzaBar = compute.find(bar => bar.id === 'forza');
+  const xboxCompute = compute.find(bar => bar.id === 'xbox-atg');
+  const xboxAuthoring = authoring.find(bar => bar.id === 'xbox-atg');
+  const xaml = authoring.find(bar => bar.id === 'xaml');
+  assert.ok(forzaBar && xboxCompute && xboxAuthoring && xaml);
+  assert.notEqual(forzaBar.row, xboxCompute.row);
+  assert.equal(forzaBar.nudged, true);
+  assert.equal(xboxCompute.nudged, true);
+  assert.equal(xboxCompute.headline, xbox.laneCopy.compute.title);
+  assert.equal(xboxAuthoring.headline, xbox.laneCopy.authoring.title);
+  assert.notEqual(xboxCompute.headline, xboxAuthoring.headline);
+  assert.equal(forzaBar.when, api.formatSpan(forza, true));
+  assert.equal(xboxCompute.when, api.formatSpan(xbox, true));
+  function overlaps(a, b) {
+    return a.row === b.row && a.left < b.left + b.width - 0.5 && b.left < a.left + a.width - 0.5;
+  }
+  assert.equal(overlaps(forzaBar, xboxCompute), false);
+  assert.equal(overlaps(xboxAuthoring, xaml), false);
+  assert.equal(byId('xaml').start, '2005-05');
+  assert.equal(byId('xaml').end, '2007-01');
+  assert.equal(byId('xaml').laneCopy.authoring.title, 'On-screen tools for laying out an interface');
 });
 
 test('each lane has at least one milestone', () => {
